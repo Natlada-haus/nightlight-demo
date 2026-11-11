@@ -149,38 +149,64 @@
     }
   };
 
+  // x/b = reference point used only to frame the tray icons; real positions come from PLACE_LAYOUT spots
   var DECOR = [
-    { id: "lantern", name: "โคมกระดาษ", price: 30, x: 108, b: 572 },
-    { id: "pine", name: "ต้นสนเล็ก", price: 20, x: 352, b: 512 },
-    { id: "flowers", name: "กระถางดอกไม้", price: 20, x: 44, b: 604 },
-    { id: "bench", name: "ม้านั่งไม้", price: 40, x: 310, b: 606 },
-    { id: "telescope", name: "กล้องดูดาว", price: 50, x: 282, b: 536 },
-    { id: "tent", name: "เต็นท์", price: 60, x: 62, b: 528 }
+    { id: "lantern", name: "โคมกระดาษ", price: 30, x: 322, b: 503 },
+    { id: "pine", name: "ต้นสนเล็ก", price: 20, x: 14, b: 500 },
+    { id: "flowers", name: "กระถางดอกไม้", price: 20, x: 50, b: 507 },
+    { id: "bench", name: "ม้านั่งไม้", price: 40, x: 352, b: 508 },
+    { id: "telescope", name: "กล้องดูดาว", price: 50, x: 362, b: 500 },
+    { id: "tent", name: "เต็นท์", price: 60, x: 352, b: 500 }
   ];
+  var DECOR_W = { lantern: 40, pine: 64, flowers: 30, bench: 62, telescope: 52, tent: 90 };
+  var DECOR_H = { lantern: 64, pine: 66, flowers: 50, bench: 40, telescope: 50, tent: 72 };
+  var DECOR_DX = { lantern: 12, pine: 8 }; // art is drawn off-centre; shift so it centres on the spot
 
+  /* painted decor sprites (codex image_generation, transparent PNG, 240px tall); [display height in scene units, aspect w/h] */
+  var DECOR_IMG = { lantern: [74, 136 / 240], pine: [76, 190 / 240], flowers: [48, 197 / 240], bench: [52, 298 / 240], telescope: [66, 156 / 240], tent: [66, 283 / 240] };
+  function decorSrc(id) { return "assets/art/decor/" + id + ".png"; }
   function decorIcon(id) {
-    var d = DECOR.filter(function (x) { return x.id === id; })[0];
-    var box = { tent: [92, 80], bench: [72, 72], pine: [80, 80] }[id] || [64, 64];
-    var cx = d.x + (id === "lantern" ? 10 : id === "pine" ? 8 : 0);
-    return '<svg viewBox="' + (cx - box[0] / 2) + ' ' + (d.b - box[1] + 4) + ' ' + box[0] + ' ' + box[1] + '" aria-hidden="true">' + DECOR_ART[id](d.x, d.b, true) + '</svg>';
+    return '<img class="decor-img" src="' + decorSrc(id) + '" alt="" aria-hidden="true">';
   }
 
-  /* ---------- constellation (ถ้วยชา) ---------- */
-  // order = lighting order. first 4 form the cup body (unlocked by streak 4)
+  /* ---------- constellations ---------- */
+  // cup shape in local units; star centres are >= 56 apart so each 48px tap circle keeps >= 8px spacing
   var CONST = {
-    name: "กลุ่มดาวถ้วยชา",
-    stars: [
-      { x: 112, y: 176 }, // 0 rim left
-      { x: 134, y: 262 }, // 1 bottom left
-      { x: 206, y: 262 }, // 2 bottom right
-      { x: 228, y: 176 }, // 3 rim right
-      { x: 262, y: 196 }, // 4 handle top
-      { x: 250, y: 236 }, // 5 handle bottom
-      { x: 92, y: 284 }   // 6 saucer
-    ],
+    id: "cup", name: "กลุ่มดาวถ้วยชา",
+    stars: [{ x: 30, y: 0 }, { x: 54, y: 92 }, { x: 140, y: 92 }, { x: 164, y: 0 }, { x: 220, y: 24 }, { x: 206, y: 84 }, { x: 0, y: 132 }],
     edges: [[0, 1], [1, 2], [2, 3], [3, 0], [3, 4], [4, 5], [5, 2], [1, 6]]
   };
-  var WANDER = [{ x: 44, y: 184 }, { x: 172, y: 138 }, { x: 336, y: 250 }, { x: 40, y: 360 }, { x: 300, y: 352 }];
+  // special reward constellation: a sleeping cat curled up
+  var CONST2 = {
+    id: "cat", name: "กลุ่มดาวแมวหลับ",
+    stars: [{ x: 0, y: 30 }, { x: 18, y: 0 }, { x: 40, y: 22 }, { x: 96, y: 18 }, { x: 140, y: 46 }, { x: 118, y: 84 }, { x: 40, y: 80 }],
+    edges: [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 0]]
+  };
+
+  /* ---------- places (viewBox 390 x 560, bottom-anchored so the ground is always visible) ----------
+     img frame, 7 constellation star centres (open sky, >= 56 apart), small stars, label spot, 6 ground spots, pet spot */
+  var VB_H = 560;
+  function cupAt(cx, cy) { return CONST.stars.map(function (p) { return { x: cx + p.x, y: cy + p.y }; }); }
+  var GROUND6 = function (b) { return [35, 99, 163, 227, 291, 355].map(function (x) { return { x: x, b: b }; }); };
+  var PLACE_LAYOUT = {
+    sea: { img: "assets/art/garden.jpg", ar: 1484 / 780, scale: 1.12, x: -24, y: -49,
+      stars: cupAt(40, 176), label: { x: 150, y: 322 },
+      wander: [{ x: 352, y: 196 }, { x: 352, y: 268 }, { x: 30, y: 372 }],
+      /* sea islet: characters sit at x≈75–250, so spots keep to the free grass at the sides (fix pass 3) */
+      spots: [{ x: 14, b: 484 }, { x: 62, b: 546 }, { x: 256, b: 484 }, { x: 314, b: 484 }, { x: 372, b: 484 }, { x: 314, b: 546 }], pet: { x: 330, y: 360 } },
+    meadow: { img: "assets/art/meadow.jpg", ar: 1690 / 780, scale: 1, x: 0, y: -90,
+      stars: cupAt(30, 176), label: { x: 140, y: 322 },
+      wander: [{ x: 324, y: 196 }],
+      spots: GROUND6(548), pet: { x: 60, y: 396 } },
+    camp: { img: "assets/art/splash.jpg", ar: 1518 / 780, scale: 1.2, x: -20, y: -60,
+      stars: [{ x: 156, y: 182 }, { x: 144, y: 256 }, { x: 212, y: 256 }, { x: 222, y: 182 }, { x: 282, y: 190 }, { x: 282, y: 250 }, { x: 98, y: 214 }],
+      label: null, wander: [],
+      spots: GROUND6(548), pet: { x: 52, y: 420 } },
+    bedroom: { img: "assets/art/bedroom.jpg", ar: 1686 / 780, scale: 1, x: 0, y: -50,
+      stars: [{ x: 146, y: 190 }, { x: 164, y: 258 }, { x: 236, y: 258 }, { x: 256, y: 190 }, { x: 314, y: 212 }, { x: 302, y: 272 }, { x: 64, y: 196 }],
+      label: null, wander: [],
+      spots: GROUND6(550), pet: { x: 56, y: 430 } }
+  };
 
   function sparkle(x, y, r) {
     var k = r * 0.28;
@@ -190,78 +216,105 @@
 
   /* ---------- full scenes ---------- */
   function splashScene() {
-    var W = 390, H = 844, g = 560, id = "sp";
-    return '<svg class="scene" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMax slice" aria-hidden="true">' + defs(id) +
-      '<rect width="' + W + '" height="' + g + '" fill="url(#' + id + 'sky)"/>' +
-      stars(W, g - 90, 70, 7, function (x, y) { return y < 372 && x > 24 && x < 366; }) +
-      moon(306, 418, 26, id) +
-      mountains(W, g) +
-      '<rect y="' + (g - 1) + '" width="' + W + '" height="' + (H - g + 1) + '" fill="' + C.ground + '"/>' +
-      pine(30, g + 8, 96, C.tree) + pine(62, g + 6, 64, C.tree) + pine(362, g + 8, 78, C.tree) +
-      '<ellipse cx="200" cy="' + (g + 70) + '" rx="190" ry="70" fill="url(#' + id + 'glow)" class="glowpool"/>' +
-      '<g transform="translate(200 ' + (g + 60) + ') scale(1.3) translate(-200 ' + (-(g + 60)) + ')">' +
-      person(160, g + 40) + fire(226, g + 56, 1) +
-      '<rect x="262" y="' + (g + 40) + '" width="26" height="16" rx="4" fill="' + C.wood + '"/><ellipse cx="275" cy="' + (g + 40) + '" rx="13" ry="4" fill="' + C.woodLight + '"/>' +
-      '</g></svg>';
+    // v2 preview: painted art (codex image_generation), soft gradients for text legibility
+    return '<div class="scene paint splash-paint" aria-hidden="true"><div class="shade"></div><div class="fireflies"></div></div>';
   }
 
-  function gardenScene(state) {
-    var W = 390, H = 636, g = 470, id = "gd";
-    var lit = state.stars || [], placed = state.decor || [], wander = state.wander || [];
+  /* st = { place, stars[], wander[], decor:[{id, spot}], unlocked, mode: null|"place"|"move", moving, petImg, petName } */
+  function gardenScene(st) {
+    var W = 390, H = VB_H, id = "gd";
+    var L = PLACE_LAYOUT[st.place] || PLACE_LAYOUT.sea;
+    var lit = st.stars || [], wander = st.wander || [], placed = st.decor || [];
+    var iw = W * L.scale, ih = iw * L.ar;
     var s = '<svg class="scene" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMax slice">' + defs(id) +
-      '<rect width="' + W + '" height="' + g + '" fill="url(#' + id + 'sky)"/>' +
-      stars(W, g - 80, 46, 21, function (x, y) { return (x > 70 && x < 290 && y > 140 && y < 340) || (y > 84 && y < 126 && x > 90 && x < 300) || (y < 96 && x < 150); }) +
-      moon(326, 132, 24, id) + mountains(W, g) +
-      '<rect y="' + (g - 1) + '" width="' + W + '" height="' + (H - g + 1) + '" fill="' + C.ground + '"/>';
+      '<defs><linearGradient id="gdtopshade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0A1230" stop-opacity=".7"/><stop offset="1" stop-color="#0A1230" stop-opacity="0"/></linearGradient>' +
+      '<clipPath id="petclip"><circle cx="' + L.pet.x + '" cy="' + L.pet.y + '" r="40"/></clipPath></defs>' +
+      '<rect width="390" height="' + H + '" fill="#16204A"/>' +
+      '<image class="place-img" href="' + L.img + '" x="' + L.x + '" y="' + L.y + '" width="' + iw + '" height="' + ih + '" preserveAspectRatio="xMidYMin slice"/>' +
+      '<rect width="390" height="130" fill="url(#gdtopshade)"/>';
 
-    // constellation lines (edge drawn when both ends lit)
+    var P = L.stars;
     s += '<g class="const-lines">';
     CONST.edges.forEach(function (e) {
-      if (lit.indexOf(e[0]) > -1 && lit.indexOf(e[1]) > -1) {
-        var a = CONST.stars[e[0]], b = CONST.stars[e[1]];
-        s += '<line x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '" stroke="#FFF3C4" stroke-opacity="0.6" stroke-width="1.5" stroke-linecap="round"/>';
-      } else {
-        var a2 = CONST.stars[e[0]], b2 = CONST.stars[e[1]];
-        s += '<line class="guide" x1="' + a2.x + '" y1="' + a2.y + '" x2="' + b2.x + '" y2="' + b2.y + '" stroke="#B9BEDF" stroke-opacity="0.16" stroke-width="1" stroke-dasharray="2 5"/>';
-      }
+      var a = P[e[0]], b = P[e[1]], on = lit.indexOf(e[0]) > -1 && lit.indexOf(e[1]) > -1;
+      s += on ? '<line x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '" stroke="#FFF3C4" stroke-opacity="0.75" stroke-width="2" stroke-linecap="round"/>'
+        : '<line class="guide" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '" stroke="#DDE0F5" stroke-opacity="0.32" stroke-width="1.5" stroke-dasharray="3 6"/>';
     });
     s += '</g>';
 
-    var unlocked = state.streak || 4;
-    CONST.stars.forEach(function (p, i) {
+    var unlocked = st.unlocked == null ? 4 : st.unlocked;
+    P.forEach(function (p, i) {
       var isLit = lit.indexOf(i) > -1, locked = i >= unlocked;
-      s += '<g class="slot ' + (isLit ? "lit" : locked ? "locked" : "open") + '" data-star="' + i + '" role="button" tabindex="0" aria-label="' +
+      /* while placing/moving decor the stars rest (not tappable) so only the ground spots are targets */
+      s += '<g class="slot ' + (isLit ? "lit" : locked ? "locked" : "open") + (st.mode ? ' resting" aria-hidden="true' : '" data-star="' + i + '" role="button" tabindex="0') + '" aria-label="' +
         (isLit ? "ดาวดวงที่ " + (i + 1) + " จุดแล้ว" : locked ? "ดาวดวงที่ " + (i + 1) + " ยังล็อก" : "จุดดาวดวงที่ " + (i + 1) + " ใช้ 10 แสง") + '">' +
-        '<circle cx="' + p.x + '" cy="' + p.y + '" r="22" fill="transparent"/>';
-      if (isLit) s += '<circle cx="' + p.x + '" cy="' + p.y + '" r="20" fill="url(#' + id + 'sglow)"/>' + sparkle(p.x, p.y, 9) + '<circle cx="' + p.x + '" cy="' + p.y + '" r="2.4" fill="#fff"/>';
-      else if (locked) s += '<circle cx="' + p.x + '" cy="' + p.y + '" r="6" fill="none" stroke="#9FA6D6" stroke-opacity="0.45" stroke-width="1.2" stroke-dasharray="2 3"/>';
-      else s += '<circle class="pulse" cx="' + p.x + '" cy="' + p.y + '" r="10" fill="none" stroke="#FFD27A" stroke-width="1.5" stroke-dasharray="3 3"/><circle cx="' + p.x + '" cy="' + p.y + '" r="2.4" fill="#FFD27A"/>';
+        '<circle class="hit" cx="' + p.x + '" cy="' + p.y + '" r="24" fill="transparent"/>';
+      if (isLit) s += '<circle cx="' + p.x + '" cy="' + p.y + '" r="22" fill="url(#' + id + 'sglow)"/>' + sparkle(p.x, p.y, 11) + '<circle cx="' + p.x + '" cy="' + p.y + '" r="2.6" fill="#fff"/>';
+      else if (locked) s += '<circle cx="' + p.x + '" cy="' + p.y + '" r="9" fill="#0E1B3D" fill-opacity=".5" stroke="#DDE0F5" stroke-opacity="0.8" stroke-width="1.5" stroke-dasharray="2 3"/>' +
+        '<path transform="translate(' + (p.x - 4) + ' ' + (p.y - 5) + ')" d="M1.5 4.5h5v4.5h-5z M2.5 4.5v-1.5a1.5 1.5 0 0 1 3 0v1.5" fill="none" stroke="#DDE0F5" stroke-width="1.1"/>';
+      else s += '<circle cx="' + p.x + '" cy="' + p.y + '" r="15" fill="#0E1B3D" fill-opacity=".35"/><circle class="pulse" cx="' + p.x + '" cy="' + p.y + '" r="13" fill="none" stroke="#FFD27A" stroke-width="2.2" stroke-dasharray="4 3"/><circle cx="' + p.x + '" cy="' + p.y + '" r="3.4" fill="#FFD27A"/>';
       s += '</g>';
     });
-    if ([0, 1, 2, 3].every(function (i) { return lit.indexOf(i) > -1; })) {
-      s += '<g class="const-label"><rect x="99" y="300" width="166" height="28" rx="14" fill="#0E1B3D" fill-opacity="0.72" stroke="#FFF3C4" stroke-opacity="0.35"/>' +
-        '<text x="182" y="319" text-anchor="middle" font-size="13" font-weight="500" fill="#FFF3C4">' + CONST.name + ' (4/7 คืน)</text></g>';
+    if (lit.length && L.label) {
+      s += '<g class="const-label"><rect x="' + (L.label.x - 104) + '" y="' + L.label.y + '" width="208" height="34" rx="17" fill="#0B1433" fill-opacity="0.88" stroke="#FFF3C4" stroke-opacity="0.45"/>' +
+        '<text x="' + L.label.x + '" y="' + (L.label.y + 23) + '" text-anchor="middle" font-size="16" font-weight="600" fill="#FFF3C4">' + CONST.name + ' ' + lit.length + '/7</text></g>';
     }
-    WANDER.forEach(function (p, i) {
+    L.wander.forEach(function (p, i) {
       var isLit = wander.indexOf(i) > -1;
       s += '<g class="slot ' + (isLit ? "lit" : "open small") + '" data-wander="' + i + '" role="button" tabindex="0" aria-label="' + (isLit ? "ดาวเล็กจุดแล้ว" : "จุดดาวเล็ก ใช้ 10 แสง") + '">' +
-        '<circle cx="' + p.x + '" cy="' + p.y + '" r="22" fill="transparent"/>' +
-        (isLit ? '<circle cx="' + p.x + '" cy="' + p.y + '" r="14" fill="url(#' + id + 'sglow)"/>' + sparkle(p.x, p.y, 6)
-          : '<circle cx="' + p.x + '" cy="' + p.y + '" r="7" fill="none" stroke="#FFD27A" stroke-opacity="0.7" stroke-width="1.2" stroke-dasharray="2 3"/>') + '</g>';
+        '<circle class="hit" cx="' + p.x + '" cy="' + p.y + '" r="24" fill="transparent"/>' +
+        (isLit ? '<circle cx="' + p.x + '" cy="' + p.y + '" r="16" fill="url(#' + id + 'sglow)"/>' + sparkle(p.x, p.y, 7)
+          : '<circle cx="' + p.x + '" cy="' + p.y + '" r="9" fill="#0E1B3D" fill-opacity=".35" stroke="#FFD27A" stroke-opacity="0.85" stroke-width="1.6" stroke-dasharray="2 3"/>') + '</g>';
     });
 
-    // back trees
-    s += pine(18, g + 6, 70, C.tree) + pine(380, g + 4, 52, C.tree);
-    // glow pool
-    s += '<ellipse cx="196" cy="' + (g + 98) + '" rx="180" ry="62" fill="url(#' + id + 'glow)" class="glowpool"/>';
-    // empty decor spots + placed decor (draw back-to-front by baseline)
-    DECOR.slice().sort(function (a, b) { return a.b - b.b; }).forEach(function (d) {
-      if (placed.indexOf(d.id) > -1) s += '<g class="decor-in">' + DECOR_ART[d.id](d.x, d.b) + '</g>';
-      else s += '<ellipse cx="' + d.x + '" cy="' + (d.b - 2) + '" rx="16" ry="4" fill="none" stroke="#9FA6D6" stroke-opacity="0.32" stroke-dasharray="3 3"/>';
-      if (d.id === "telescope") s += person(170, g + 82) + fire(232, g + 98, 0.95);
+    // pet: round painted portrait + name pill (tap → pet page)
+    var pt = L.pet;
+    s += '<g class="pet-badge" data-go="pet" role="button" tabindex="0" aria-label="แมวน้อย ' + st.petName + ' ดูรายละเอียด">' +
+      '<circle cx="' + pt.x + '" cy="' + pt.y + '" r="44" fill="#0B1433" fill-opacity=".55"/>' +
+      '<rect x="' + (pt.x - 41) + '" y="' + (pt.y - 41) + '" width="82" height="82" rx="41" fill="#1C2858"/>' +
+      '<image href="' + st.petImg + '" x="' + (pt.x - 46) + '" y="' + (pt.y - 50) + '" width="92" height="92" clip-path="url(#petclip)" preserveAspectRatio="xMidYMid slice"/>' +
+      '<circle cx="' + pt.x + '" cy="' + pt.y + '" r="40" fill="none" stroke="#FFE3B8" stroke-width="3"/>' +
+      '<rect x="' + (pt.x - 40) + '" y="' + (pt.y + 34) + '" width="80" height="28" rx="14" fill="#0B1433" fill-opacity=".92" stroke="#FFE3B8" stroke-opacity=".6"/>' +
+      '<text x="' + pt.x + '" y="' + (pt.y + 54) + '" text-anchor="middle" font-size="16" font-weight="600" fill="#FFF3C4">' + st.petName + '</text></g>';
+
+    // decor on this place's ground spots (sorted back → front)
+    var used = {};
+    placed.slice().sort(function (a, b) { return L.spots[a.spot].b - L.spots[b.spot].b; }).forEach(function (d) {
+      var sp = L.spots[d.spot]; if (!sp) return; used[d.spot] = 1;
+      var di = DECOR_IMG[d.id], h = di[0], w = h * di[1];
+      var moving = st.mode === "move" && st.moving === d.id;
+      /* while placing/moving, placed decor rests (not tappable) so only the highlighted spots are targets */
+      s += (st.mode ? '<g class="decor-in resting' + (moving ? " moving" : "") + '" aria-hidden="true" style="pointer-events:none">'
+        : '<g class="decor-in' + (moving ? " moving" : "") + '" data-placed="' + d.id + '" role="button" tabindex="0" aria-label="' + nameOf(d.id) + ' แตะเพื่อย้ายหรือเก็บคืน">') +
+        '<rect class="hit" x="' + (sp.x - 24) + '" y="' + (sp.b - 48) + '" width="48" height="48" fill="transparent"/>' + /* fixed 48x48 target at the item's base keeps >=8px spacing (WCAG 2.5.8) */
+        '<ellipse cx="' + sp.x + '" cy="' + sp.b + '" rx="' + (w * 0.55) + '" ry="5" fill="#050A1E" opacity=".45"/>' +
+        '<image href="' + decorSrc(d.id) + '" class="decor-paint" x="' + (sp.x - w / 2) + '" y="' + (sp.b - h) + '" width="' + w + '" height="' + h + '" preserveAspectRatio="xMidYMax meet"/></g>';
     });
+    // highlighted free spots while placing / moving
+    if (st.mode) {
+      var mine = st.mode === "move" ? (placed.filter(function (d) { return d.id === st.moving; })[0] || {}).spot : -1;
+      L.spots.forEach(function (sp, i) {
+        if (i === mine || (st.mode === "place" && used[i])) return;
+        s += '<g class="spot" data-spot="' + i + '" role="button" tabindex="0" aria-label="' + (used[i] ? "สลับที่กับของตรงนี้" : "วางตรงนี้") + ' จุดที่ ' + (i + 1) + '">' +
+          '<circle cx="' + sp.x + '" cy="' + (sp.b - 22) + '" r="24" fill="#0B1433" fill-opacity=".55" stroke="#FFD27A" stroke-width="3" stroke-dasharray="6 4"/>' +
+          '<path d="M' + (sp.x - 9) + ' ' + (sp.b - 22) + ' h18 M' + sp.x + ' ' + (sp.b - 31) + ' v18" stroke="#FFF3C4" stroke-width="3.5" stroke-linecap="round"/></g>';
+      });
+    }
     s += '</svg>';
     return s;
+  }
+  function nameOf(id) { return (DECOR.filter(function (x) { return x.id === id; })[0] || {}).name || id; }
+
+  function miniConst(c, litN, size) {
+    var st = c.stars, xs = st.map(function (p) { return p.x; }), ys = st.map(function (p) { return p.y; });
+    var pad = 16, minx = Math.min.apply(0, xs) - pad, miny = Math.min.apply(0, ys) - pad, w = Math.max.apply(0, xs) - minx + pad, h = Math.max.apply(0, ys) - miny + pad;
+    var s = '<svg viewBox="' + minx + ' ' + miny + ' ' + w + ' ' + h + '" aria-hidden="true">';
+    c.edges.forEach(function (e) {
+      var a = st[e[0]], b = st[e[1]], on = e[0] < litN && e[1] < litN;
+      s += '<line x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '" stroke="#FFF3C4" stroke-opacity="' + (on ? .8 : .3) + '" stroke-width="3"' + (on ? "" : ' stroke-dasharray="5 7"') + '/>';
+    });
+    st.forEach(function (p, i) { s += i < litN ? sparkle(p.x, p.y, 11) : '<circle cx="' + p.x + '" cy="' + p.y + '" r="6" fill="#8D94C4"/>'; });
+    return s + '</svg>';
   }
 
   /* ---------- small scenes ---------- */
@@ -292,7 +345,10 @@
       '<circle cx="10" cy="12" r="1.3" fill="#FFF3C4"/><circle cx="22" cy="24" r="1.6" fill="#FFF3C4"/><circle cx="34" cy="14" r="1.1" fill="#FFF3C4"/><circle cx="14" cy="36" r="1" fill="#FFF3C4"/><circle cx="40" cy="32" r="1.4" fill="#FFF3C4"/><circle cx="54" cy="38" r="1" fill="#FFF3C4"/>' +
       '<path d="M0 50 Q32 42 64 50 V64 H0Z" fill="#1B3A3F"/><path d="M8 50 l2 -6 l2 6 M24 47 l2 -6 l2 6 M44 47 l2 -6 l2 6 M56 50 l2 -6 l2 6" stroke="#2F5A55" stroke-width="1.5" fill="none"/>'
   };
-  function thumb(id) { return '<svg viewBox="0 0 64 64" aria-hidden="true">' + THUMBS[id] + '</svg>'; }
+  function thumb(id) {
+    if (id === 'waves') return '<img src="assets/art/card-night-island.jpg" alt="" width="72" height="72">';
+    return '<svg viewBox="0 0 64 64" aria-hidden="true">' + THUMBS[id] + '</svg>';
+  }
 
-  window.NLArt = { splashScene: splashScene, gardenScene: gardenScene, morningArt: morningArt, thumb: thumb, decorIcon: decorIcon, DECOR: DECOR, CONST: CONST, WANDER: WANDER, sparkle: sparkle };
+  window.NLArt = { splashScene: splashScene, gardenScene: gardenScene, morningArt: morningArt, thumb: thumb, decorIcon: decorIcon, DECOR: DECOR, CONST: CONST, CONST2: CONST2, PLACE_LAYOUT: PLACE_LAYOUT, sparkle: sparkle, miniConst: miniConst };
 })();

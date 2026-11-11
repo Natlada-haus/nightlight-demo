@@ -91,22 +91,90 @@ window.NL_STORIES = [
   }
 ];
 
-/* ข้อมูลการนอนตัวอย่าง 7 คืน (คืนวันพุธ 4 พ.ย. – คืนวันอังคาร 10 พ.ย. 2026)
-   เป้าเข้านอน 23:00 (±30 นาที = ตรงเวลา)
-   status: "ontime" = ตรงเวลา (+20), "rest" = คืนพัก (ใช้สิทธิ์พัก 2 คืน/สัปดาห์ สถิติไม่หาย), "late" = เข้านอนช้า (ก่อนเริ่มสถิติต่อเนื่อง) */
+/* ข้อมูลการนอนตัวอย่าง 10 คืน (คืนวันอาทิตย์ 1 พ.ย. – คืนวันอังคาร 10 พ.ย. 2026) · สถานะของแต่ละคืนคำนวณด้วย computeStreak() */
 window.NL_NIGHTS = [
-  { day: "พ", date: "4 พ.ย.", bed: "00:40", wake: "06:30", mins: 350, status: "late" },
-  { day: "พฤ", date: "5 พ.ย.", bed: "23:12", wake: "06:17", mins: 425, status: "ontime" },
-  { day: "ศ", date: "6 พ.ย.", bed: "00:15", wake: "06:45", mins: 390, status: "rest" },
-  { day: "ส", date: "7 พ.ย.", bed: "23:25", wake: "07:05", mins: 460, status: "ontime" },
-  { day: "อา", date: "8 พ.ย.", bed: "00:05", wake: "08:15", mins: 490, status: "rest" },
-  { day: "จ", date: "9 พ.ย.", bed: "22:51", wake: "05:39", mins: 408, status: "ontime" },
-  { day: "อ", date: "10 พ.ย.", bed: "23:08", wake: "06:20", mins: 432, status: "ontime" }
+  /* ข้อมูลตัวอย่าง (เดโม) · date = วันที่เข้านอน (คืนนั้น), day = ชื่อวันย่อ */
+  { date: "2026-11-01", day: "อา", label: "1 พ.ย.", bed: "23:05", wake: "06:35", mins: 450 },
+  { date: "2026-11-02", day: "จ", label: "2 พ.ย.", bed: "23:15", wake: "06:30", mins: 435 },
+  { date: "2026-11-03", day: "อ", label: "3 พ.ย.", bed: "22:40", wake: "05:55", mins: 435 },
+  { date: "2026-11-04", day: "พ", label: "4 พ.ย.", bed: "00:40", wake: "06:30", mins: 350 },
+  { date: "2026-11-05", day: "พฤ", label: "5 พ.ย.", bed: "00:15", wake: "06:45", mins: 390 },
+  { date: "2026-11-06", day: "ศ", label: "6 พ.ย.", bed: "01:05", wake: "06:20", mins: 315 },
+  { date: "2026-11-07", day: "ส", label: "7 พ.ย.", bed: "23:25", wake: "07:05", mins: 460 },
+  { date: "2026-11-08", day: "อา", label: "8 พ.ย.", bed: "22:51", wake: "05:39", mins: 408 },
+  { date: "2026-11-09", day: "จ", label: "9 พ.ย.", bed: "00:05", wake: "06:15", mins: 370 },
+  { date: "2026-11-10", day: "อ", label: "10 พ.ย.", bed: "23:08", wake: "06:20", mins: 432 }
 ];
 
-/* สูตรแสง: 7 ชม. = 100 (เส้นตรงถ้าน้อยกว่า), เกิน 7 ชม. ไม่เพิ่ม (เพดาน 9 ชม. ไม่มีแสงเพิ่มแน่นอน), เข้านอนตรงเวลา +20 */
+/* ---------- กติกา (pure functions, ไม่มีบทลงโทษ) ----------
+   เข้านอนตรงเวลา = เข้านอนระหว่าง 22:30–23:30 (เป้า 23:00 ±30 นาที) และนอนอย่างน้อย 6 ชม.
+   แสง: นอน 7 ชม. = 100 (น้อยกว่านั้นคิดตามสัดส่วน เช่น 6 ชม. = 86), เกิน 7 ชม. ไม่เพิ่ม (9 ชม. ขึ้นไปก็ 100),
+        เข้านอนตรงเวลา +20 */
+window.NL_RULES = { target: 23 * 60, window: 30, minMins: 360, fullMins: 420, onTimeBonus: 20, restPerWeek: 2, rewardRun: 7 };
+
+function nlBedMinutes(hhmm) { // นาทีนับจากเที่ยงวัน → 23:00 = 660, 00:40 = 760
+  var p = hhmm.split(":"), m = (+p[0]) * 60 + (+p[1]);
+  return (m < 12 * 60 ? m + 1440 : m) - 720;
+}
+window.NL_isOnTime = function (n) {
+  var R = window.NL_RULES;
+  return Math.abs(nlBedMinutes(n.bed) - (R.target - 720)) <= R.window && n.mins >= R.minMins;
+};
 window.NL_lightFor = function (n) {
-  var base = Math.round(Math.min(n.mins, 420) / 420 * 100);
-  var bonus = n.status === "ontime" ? 20 : 0;
+  var R = window.NL_RULES;
+  var base = Math.round(Math.min(n.mins, R.fullMins) / R.fullMins * 100);
+  var bonus = window.NL_isOnTime(n) ? R.onTimeBonus : 0;
   return { base: base, bonus: bonus, total: base + bonus };
+};
+/* วันจันทร์ของสัปดาห์ (จันทร์–อาทิตย์) ของวันที่ "YYYY-MM-DD" */
+window.NL_weekOf = function (iso) {
+  var d = new Date(iso + "T12:00:00Z"), dow = (d.getUTCDay() + 6) % 7; // จันทร์ = 0
+  d.setUTCDate(d.getUTCDate() - dow);
+  return d.toISOString().slice(0, 10);
+};
+/* computeStreak(nights) — pure: ไม่แก้ไข input
+   แต่ละคืน: ontime | rest (คืนพักอัตโนมัติ ถ้าสัปดาห์นั้นยังใช้ไม่ครบ 2) | late (คืนพักหมดแล้ว → นับต่อเนื่องใหม่ ไม่มีอะไรหาย)
+   คืนพักนับว่ายังต่อกันอยู่ และนับรวมใน 7 คืนต่อกัน */
+window.computeStreak = function (nights, todayIso) {
+  var R = window.NL_RULES, used = {}, run = 0, best = 0, total = 0, out = [], reached = false;
+  nights.forEach(function (n) {
+    var wk = window.NL_weekOf(n.date), kind;
+    if (window.NL_isOnTime(n)) { kind = "ontime"; total++; run++; }
+    else if ((used[wk] || 0) < R.restPerWeek) { used[wk] = (used[wk] || 0) + 1; kind = "rest"; run++; }
+    else { kind = "late"; run = 0; }
+    if (run > best) best = run;
+    if (run >= R.rewardRun) reached = true;
+    out.push({ night: n, kind: kind, week: wk, restUsedInWeek: used[wk] || 0, run: run });
+  });
+  var thisWeek = window.NL_weekOf(todayIso || (nights.length ? nights[nights.length - 1].date : "2026-11-11"));
+  return { nights: out, run: run, best: best, totalOnTime: total, restUsedThisWeek: used[thisWeek] || 0, restPerWeek: R.restPerWeek, rewardReached: reached };
+};
+
+/* ---------- การ์ดความฝัน (เช้าละ 1 ใบ) ---------- */
+window.NL_CARDS = [
+  { id: "island", img: "assets/art/card-night-island.jpg", title: "เกาะเล็กกลางคืน", cap: "ผิงไฟกับเพื่อน ๆ บนเกาะกลางทะเลดาว" },
+  { id: "rain", img: "assets/art/card-rain.jpg", title: "ฝนพรำริมหน้าต่าง", cap: "แมวงีบข้างโคมไฟ ฟังเสียงฝนเบา ๆ" },
+  { id: "whale", img: "assets/art/card-whale.jpg", title: "วาฬบนฟ้า", cap: "วาฬดาวว่ายผ่านเมฆ ขณะเรานั่งผิงไฟ" },
+  { id: "lanterns", img: "assets/art/card-lanterns.jpg", title: "โคมลอยเหนือทะเลสาบ", cap: "นั่งเรือกับแมว ดูโคมลอยขึ้นฟ้าช้า ๆ" },
+  { id: "bakery", img: "assets/art/card-moonbakery.jpg", title: "ร้านขนมบนก้อนเมฆ", cap: "คุกกี้รูปดาวอุ่น ๆ ใต้ป้ายพระจันทร์" },
+  { id: "river", img: "assets/art/meadow.jpg", pos: "center 18%", title: "แม่น้ำดาว", cap: "ทางช้างเผือกไหลผ่านทุ่งหญ้าเงียบ ๆ" }
+];
+window.NL_CARD_SLOTS = 12; /* ช่องที่เหลือแสดงเป็นเงา "ยังไม่ได้" */
+
+/* ---------- ฉาก ---------- */
+window.NL_PLACES = [
+  { id: "sea", name: "สวนดาวริมทะเล", img: "assets/art/garden.jpg", need: 0, pos: "center 64%" },
+  { id: "meadow", name: "ทุ่งหญ้าดูดาว", img: "assets/art/meadow.jpg", need: 3, pos: "center 66%" },
+  { id: "camp", name: "แคมป์กลางป่า", img: "assets/art/splash.jpg", need: 5, pos: "center 62%" },
+  { id: "bedroom", name: "ห้องนอนอบอุ่น", img: "assets/art/bedroom.jpg", needRun: 7, pos: "center 58%" }
+];
+
+/* ---------- แมวน้อย "นุ่มนิ่ม" (โตตามจำนวนคืนที่เข้านอนตรงเวลารวม ไม่ต้องติดกัน) ---------- */
+window.NL_PET = {
+  name: "นุ่มนิ่ม",
+  stages: [
+    { from: 0, to: 6, name: "ลูกแมว", img: "assets/art/cat-1.jpg", desc: "ตัวเล็ก ขนฟู ชอบนั่งบนเบาะดาว" },
+    { from: 7, to: 20, name: "แมววัยรุ่น", img: "assets/art/cat-2.jpg", desc: "โตขึ้นแล้ว ได้ผ้าพันคอสีม่วงอุ่น ๆ" },
+    { from: 21, to: Infinity, name: "แมวโต", img: "assets/art/cat-3.jpg", desc: "ใส่หมวกนอน ถือโคมส่องทางให้เรา" }
+  ]
 };
