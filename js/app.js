@@ -193,7 +193,7 @@
     return '<section class="screen splash">' + Art.splashScene() +
       '<span class="tag">เดโม</span>' +
       '<div class="top"><h1 class="wordmark"><img src="assets/art/moonpuff-wordmark.png" alt="Moonpuff" width="720" height="206"></h1><p class="th-name">มูนพัฟ</p>' +
-      '<p class="tagline">นอนดี แสงก็มา</p>' +
+      '<p class="tagline">นอนเต็มอิ่ม ฟ้าเต็มดาว</p>' +
       '<p class="sub">เข้านอนตรงเวลา<br>แล้วฟ้าของคุณจะสว่างขึ้นทีละดวง</p></div>' +
       '<div class="bottom"><button class="btn primary big" data-go="connect">' + I.spark + '<span>เริ่มเลย</span></button>' +
       '<p class="fine">เกมเล็ก ๆ ชวนเข้านอนให้เป็นเวลา</p></div></section>';
