@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Nightlight demo: procedural bedtime sound loops (offline, no recordings).
+"""Moonpuff demo: procedural bedtime sound loops (offline, no recordings).
 
 Every sound is synthesised from numpy noise/oscillators, made into a seamless
 loop with an equal-power crossfade, normalised to -3 dBFS peak, written as

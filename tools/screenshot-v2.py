@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Nightlight v2 preview: capture EVERY screen/state + run senior-friendly audits.
+"""Moonpuff demo v2: capture EVERY screen/state + run senior-friendly audits.
 
 Playwright + /usr/bin/google-chrome, 390x844 @2x, prefers-reduced-motion: reduce.
 Writes ../art-v2/screens/NN-name.png, ../art-v2/screens/contact-sheet-all.png,

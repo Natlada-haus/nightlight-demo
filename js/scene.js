@@ -1,4 +1,4 @@
-/* Nightlight — flat minimal vector art (inline SVG strings). All art is original. */
+/* Moonpuff — flat minimal vector art (inline SVG strings). All art is original. */
 (function () {
   var C = {
     sky0: "#0E1B3D", sky1: "#2A2D5E", sky2: "#4A3F6B",

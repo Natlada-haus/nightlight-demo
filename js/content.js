@@ -1,4 +1,4 @@
-/* Nightlight demo — bedtime reading content (original Thai pieces written for this demo)
+/* Moonpuff demo — bedtime reading content (original Thai pieces written for this demo)
    และข้อมูลการนอนตัวอย่าง (mock) ที่ใช้ร่วมกันทุกหน้า */
 
 window.NL_STORIES = [

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Nightlight v2 preview: logic tests (rules + rewards) in a real browser.
+"""Moonpuff demo v2: logic tests (rules + rewards) in a real browser.
 Usage: python3 tools/test-v2.py      -> prints PASS/FAIL per check, exit 1 on any failure."""
 import functools, http.server, os, socket, sys, threading
 from playwright.sync_api import sync_playwright

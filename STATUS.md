@@ -1,4 +1,6 @@
-# STATUS — Nightlight demo v2 preview (features + senior-friendly)
+# STATUS — Moonpuff demo v2 (features + senior-friendly)
+
+_11 Nov 2026 11:12: app renamed to **Moonpuff** (was Nightlight / นอนได้พลัง). Repo name, URL and localStorage keys (`nightlight-*`) unchanged on purpose so links and saved progress keep working. v2 is live at https://natlada-haus.github.io/nightlight-demo/ (commit d07c035 + rename)._
 
 _Updated 2026-11-11 (fix pass 2: Anuphan only, 4 text sizes). Preview copy only. The live demo in `../nightlight-demo/` was not touched. Nothing was pushed, deployed or published._
 

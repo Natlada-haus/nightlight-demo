@@ -1,0 +1,11 @@
+{
+  "name": "Moonpuff (เดโม)",
+  "short_name": "Moonpuff",
+  "description": "เกมเล็ก ๆ ชวนเข้านอนให้เป็นเวลา (เดโม ข้อมูลตัวอย่าง)",
+  "lang": "th",
+  "start_url": "./#splash",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0D1431",
+  "theme_color": "#0E1B3D"
+}

@@ -137,7 +137,7 @@ W = pad * 2 + cols * tw + (cols - 1) * gap
 H = pad * 2 + 70 + rows * (th + lab) + (rows - 1) * gap
 sheet = Image.new("RGB", (W, H), (9, 14, 34))
 d = ImageDraw.Draw(sheet)
-d.text((pad, pad - 10), "Nightlight · นอนได้พลัง — คลิกเดโม (ข้อมูลตัวอย่าง)", font=font_title, fill=(255, 243, 196))
+d.text((pad, pad - 10), "Moonpuff — คลิกเดโม (ข้อมูลตัวอย่าง)", font=font_title, fill=(255, 243, 196))
 for i, (name, path) in enumerate(SHOTS):
     r, c = divmod(i, cols)
     if r == 1:

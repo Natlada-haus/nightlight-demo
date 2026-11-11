@@ -1,4 +1,4 @@
-/* Nightlight demo v2 preview — app logic (hash router + localStorage state).
+/* Moonpuff demo (repo: nightlight-demo) — app logic (hash router + localStorage state).
    ทุกตัวเลขการนอนเป็นข้อมูลตัวอย่าง (เดโม) · ไม่มีการเรียกเครือข่าย */
 (function () {
   "use strict";
@@ -192,7 +192,7 @@
   screens.splash = function () {
     return '<section class="screen splash">' + Art.splashScene() +
       '<span class="tag">เดโม</span>' +
-      '<div class="top"><h1>Nightlight</h1><p class="th-name">นอนได้พลัง</p>' +
+      '<div class="top"><h1 class="wordmark"><img src="assets/art/moonpuff-wordmark.png" alt="Moonpuff" width="720" height="206"></h1><p class="th-name">มูนพัฟ</p>' +
       '<p class="tagline">นอนดี แสงก็มา</p>' +
       '<p class="sub">เข้านอนตรงเวลา<br>แล้วฟ้าของคุณจะสว่างขึ้นทีละดวง</p></div>' +
       '<div class="bottom"><button class="btn primary big" data-go="connect">' + I.spark + '<span>เริ่มเลย</span></button>' +
@@ -864,7 +864,7 @@
 
   /* ---------- router ---------- */
   var current = "";
-  var TITLES = { splash: "นอนได้พลัง", connect: "เชื่อมข้อมูลการนอน", morning: "อรุณสวัสดิ์", garden: "สวนดาว", decor: "ของแต่งสวน", places: "เลือกฉาก", pet: "แมวน้อย",
+  var TITLES = { splash: "หน้าแรก", connect: "เชื่อมข้อมูลการนอน", morning: "อรุณสวัสดิ์", garden: "สวนดาว", decor: "ของแต่งสวน", places: "เลือกฉาก", pet: "แมวน้อย",
     collect: "สมุดสะสม", bedtime: "ก่อนนอน", quiet: "นั่งนิ่ง ๆ", breathe: "หายใจช้า ๆ", sounds: "เสียงก่อนนอน", read: "อ่านก่อนนอน", reader: "กำลังอ่าน",
     gratitude: "ขอบคุณวันนี้", winddown: "เวลาเตรียมนอน", stats: "สถิติ", settings: "ตั้งค่า" };
   function parse() { var h = (location.hash || "#splash").slice(1).split("/"); return { name: screens[h[0]] ? h[0] : "splash", arg: h[1] }; }
@@ -881,7 +881,7 @@
     if (modalEl.classList.contains("show")) closeModal();
     render();
     var changed = r.name !== current; current = r.name;
-    document.title = "Nightlight · " + TITLES[r.name] + " (เดโม)";
+    document.title = "Moonpuff · " + TITLES[r.name] + " (เดโม)";
     if (changed) { var h = app.querySelector("h1"); if (h) { h.setAttribute("tabindex", "-1"); } }
     if (r.name === "reader") startReader();
     maybeCelebrate();
