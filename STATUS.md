@@ -44,6 +44,41 @@ A plain HTML/CSS/JS app (no build step, no network calls) for people aged 60+, w
    - Reset, with a confirm.
 8. **Stats** (`#stats`, from Settings): bar chart with glyphs (star / moon / ring) plus a legend; a per-night list (day, date, hours, bedtime, status as icon + word, light); 4 tiles. All labelled "ข้อมูลตัวอย่าง (เดโม)".
 
+## Animation pass (11 Nov 2026)
+The app now has calm, slow motion everywhere it makes sense, and one switch turns it all off.
+- **Engine:** `js/ambient.js` (loaded before app.js) draws one small `<canvas>` per scene: splash, garden place, bedtime header. Each scene has ≤ 40 particles, is capped at ~30 fps, pauses when the tab is hidden, and is destroyed when its screen goes. Canvases have `pointer-events: none` and sit under the HUD and text. All CSS is in the marked "ANIMATION PASS" block at the end of `css/style.css`. Nothing changes brightness faster than ~0.5 Hz.
+- **Off switch:** settings card **"ภาพเคลื่อนไหว เปิด/ปิด"**, a 52 px switch. It defaults to เปิด and is saved in localStorage as `nightlight-motion`. `html.motion-off` is set before first paint and kills every animation and transition, the same way the OS reduced-motion rule does. Under `prefers-reduced-motion` the particle loop never starts, and the card adds "เครื่องนี้ตั้งให้ลดภาพเคลื่อนไหวไว้ ภาพจึงนิ่งอยู่".
+- **Splash:**
+  - Fire glow breathes (3 offset layers).
+  - 3 soft flames over the painted fire.
+  - Up to 14 rising, swaying embers.
+  - The lantern pulses gently.
+  - 16 fireflies drift in the lower part and fade in and out over 2–4 s.
+  - The painted background drifts very slowly (scale 1 → 1.03 over 56 s).
+  - Fire and lantern positions come from the image's natural size plus the cover / background-position math, so they stay put on resize.
+- **Garden places:**
+  - **All places:** fireflies in the ground band; 14–16 twinkling sky dots that keep clear of constellation slots, the label, the pet and the HUD; lit stars breathe with staggered timing; lighting a star gives a small sparkle ring.
+  - **Sea:** faint light streaks slide slowly, clipped to the water only.
+  - **Meadow:** embers at its fire; the tree lanterns pulse.
+  - **Camp:** the splash fire effects (same image, mapped through the SVG image frame).
+  - **Bedroom:** the lamp glow pulses; dust motes in the lamp light; a few fireflies by the window.
+- **Pet นุ่มนิ่ม** (garden badge, pet page, current stage card): breathes (scale 1 → 1.03), sways slowly (±2°) and has a soft blink-squash. A tiny sparkle rises beside it on the pet page about every 10 s. The garden portrait now sits in a clipped `<g>`, so the round frame stays still.
+- **Morning "เก็บแสง":** 20 golden sparkles rise and gather beside the counter (≤ 1.2 s), and the counter glows once.
+- **Other:**
+  - Press feedback: buttons, cards and tray items scale to .97 and spring back (no hover effects).
+  - Screen changes: 0.32 s fade with a 10 px upward settle; sub-screens come in 12 px from the right. This only happens on a route change; re-renders of the same screen no longer fade.
+  - The bedtime header has faint twinkles and motes, and drifts slowly.
+  - The dream card detail has a slow sheen and soft sparkles.
+- **Not done / changed from the brief:**
+  - No drift in the garden. The painted place is a single SVG with the slots, decor and pet on top, and scaling its `<image>` would repaint the whole SVG every frame on phones. The canvas layer carries the life there instead.
+  - The reading list has no bedroom hero, so its "motes + lamp" were put on the bedtime hub header, which is the bedroom.jpg hero.
+  - There is no optional floating "z" in the garden.
+- **Checks:**
+  - `tools/test-v2.py` ALL PASS (62 checks, including the new ones for reduced motion, the switch turned off, and the setting persisting).
+  - `tools/screenshot-v2.py`: 141 screens, 0 issues.
+  - `tools/anim-frames.py`: frames, videos and perf in `../art-v2/screens/anim/`. At 4× CPU throttle the ambient loop draws at 30/s with an average 0.5 ms (max 2.7 ms) per draw, 0 long tasks, and the page holds 60 fps in headless Chrome.
+  - Not yet tested on a real low-end phone.
+
 ## Rules (logic in `js/content.js`, one source for every screen)
 - **On-time night** = bedtime 22:30–23:30 (target 23:00 ±30 min) **and** at least 6 h of sleep (`NL_isOnTime`).
 - **Light** (`NL_lightFor`):

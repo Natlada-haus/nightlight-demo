@@ -96,3 +96,39 @@ Files changed: `css/style.css`, `js/app.js`, `js/scene.js`, `index.html`, `tools
 3. **Sound loops:** OGG decodes to exactly 24.000 s and wraps cleanly. AAC (.m4a, Safari) decodes 208 samples longer with a padded, faded last frame (fan: wrap jump 0.19 vs normal step p99.9 0.05 → would click). Fix in js/app.js `Snd.exactLoop()`: after decoding, skip any leading priming silence and keep exactly 24 s, so the loop wraps on the crossfade made by make_sounds.py. `tools/check_sound_seams.py` emulates this: all 12 files OK (wrap jump ≤ the in-loop p99.9 step). Not tested by ear or on a real iPhone. The `<audio loop>` fallback (only used when opened from file://) can't be trimmed.
 4. **Decor vs feet:** sea islet has its own 6 spots on the free grass at the sides (characters at x≈75–250), 2 rows ≥56 apart; decor tap target is a fixed 48×48 at the item's base; while placing/moving, placed decor and stars rest (not tappable) so only the spots are targets; pet badge moved to (330, 360).
 Checks after the last change: test-v2.py ALL PASS (44 checks); screenshot-v2.py 141 screens (42 + 33×3 sizes): 0 issues (overflow, clipping, targets <48, pairs <8 px, font floor), min contrast 8.28:1, JS errors none.
+
+
+## Animation pass — 11 Nov 2026 (founder: "alive but calm")
+No commits or pushes; the lead reviews and pushes. No copy, logic or rules changed. The only new copy is the settings card for the motion switch. No ฟรี, no medical words, Anuphan only, demo labels kept.
+
+### Files
+- **New:**
+  - `js/ambient.js`: canvas particles, scene mapping, collect/star bursts, the motion setting.
+  - `tools/anim-frames.py`: frames, videos, perf.
+- **Changed:**
+  - `index.html`: loads ambient.js before app.js; the pre-paint script sets `motion-off`.
+  - `css/style.css`: new block at the end. The reduced-motion rule at ~line 490 is untouched.
+  - `js/app.js`:
+    - `render()` adds `.enter` on route change and calls `Ambient.scan`.
+    - Collect: burst + glow.
+    - Star lit: ring.
+    - `countUp` respects the switch.
+    - The settings card and the `motionToggle` handler.
+  - `js/scene.js`: the pet `<image>` is wrapped in a clipped `<g class>` so it can breathe inside a still frame.
+  - `tools/test-v2.py`: 17 new checks.
+  - `STATUS.md`.
+
+### Checks (after the last code change)
+| Check | Result |
+|---|---|
+| `python3 tools/test-v2.py` | **ALL PASS, 62 checks**. New checks, all PASS: <br>• Reduced motion: splash, garden, bedtime and pet have no `.amb-canvas`, `Ambient.running()` is false and `document.getAnimations()` is 0. <br>• Motion on by default: splash and garden loops run with one canvas and ≤ 40 particles; the settings screen runs no loop. <br>• The switch is ≥ 48 px and shows เปิด. Turning it off gives ปิด, `html.motion-off` and the saved value `off`; the same 4 screens then have no canvas, no loop and 0 animations. <br>• The setting persists after reload; turning it back on animates again. <br>• Collect shows the overlay and the counter glow, then cleans up within 1.5 s. <br>• No JS errors in either context. |
+| `python3 tools/screenshot-v2.py` | 141 screens (42 กลาง + 33 × เล็ก/ใหญ่/ใหญ่มาก), reduced motion: **0 issues**. Min contrast 8.28:1, JS errors none, non-local requests none. |
+| `python3 tools/anim-frames.py` | `../art-v2/screens/anim/`: `splash`, `garden-sea`, `garden-camp`, `morning-collect` (mid-sparkle) and `pet`, each `-f1..f6.png` at 250 ms apart (pet at 600 ms). <br>Videos: `splash`/`garden` `.webm` 0.55/0.61 MB, `.mp4` 0.20/0.30 MB, `.gif` 2.67/2.96 MB (all ≤ 4 MB). <br>JS errors none, non-local requests none. |
+| Perf, CDP `Emulation.setCPUThrottlingRate` 4, 5 s each | Splash: page 60 fps (16.7 ms average frame), ambient 30 draws/s, 0.56 ms average / 2.7 ms max per draw, 30 particles, 0 long tasks. <br>Garden sea: 60 fps, 30 draws/s, 0.50 / 1.3 ms, 38 particles, 0 long tasks. <br>Garden camp: 60 fps, 30 draws/s, 0.48 / 1.2 ms, 34 particles, 0 long tasks. |
+| Visual review | Splash, all 4 garden places, bedtime, pet, morning collect, star ring, card detail and the settings card were checked by eye. The flames and glow sit on the painted fires in splash and camp. The collect sparkles first landed on the digits and the "เดโม" line; they were moved to the empty space left of the number. |
+
+### Notes / open
+- Perf was measured in headless desktop Chrome with throttling, not on a real low-end phone. On a phone the CSS transforms are composited, but the garden's existing SVG pulse animations still repaint the SVG.
+- There is no garden background drift (on purpose, see STATUS.md), and no reading-list hero exists, so that effect went on the bedtime hub header.
+- Tooling: Playwright's `record_video` needs its own ffmpeg, so `~/.cache/ms-playwright/ffmpeg-1011/ffmpeg-linux` is a symlink to the system `/usr/bin/ffmpeg` (which has libvpx); nothing was downloaded.
+- Not yet checked with 60+ users whether the motion feels calm enough. The switch is the escape hatch.

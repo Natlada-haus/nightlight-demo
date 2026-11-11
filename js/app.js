@@ -254,12 +254,15 @@
     if (state.cards.indexOf(TODAY_CARD) < 0) state.cards.push(TODAY_CARD);
     save(); render();
     countUp();
+    /* animation pass: gentle golden sparkles rise to the counter, which glows softly once */
+    var cnt = document.getElementById("count");
+    if (cnt && window.Ambient && Ambient.allowed()) { cnt.parentNode.classList.add("glow"); Ambient.collectBurst(cnt); }
     toast("เก็บแสงแล้ว +" + LAST_LIGHT.total + " แสง");
   }
   function countUp() {
     var el = document.getElementById("count"); if (!el) return;
     var target = LAST_LIGHT.total;
-    if (reduced) { el.textContent = target; return; }
+    if (reduced || (window.Ambient && !Ambient.allowed())) { el.textContent = target; return; }
     var t0 = null, dur = 1200;
     function step(t) {
       if (!t0) t0 = t; var p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 3);
@@ -324,14 +327,15 @@
     if (state.stars.indexOf(i) > -1) { toast("ดาวดวงนี้สว่างอยู่แล้ว"); return; }
     if (i >= un) { toast("นอนตรงเวลาอีก " + (i + 1 - s.totalOnTime) + " คืน ดาวดวงนี้ก็จุดได้"); return; }
     if (!spend(STAR_COST)) return;
-    state.stars.push(i); rerenderGarden();
+    state.stars.push(i); rerenderGarden(); sparkleAt('[data-star="' + i + '"] .hit');
     toast(state.stars.length === 7 ? "กลุ่มดาวถ้วยชาครบแล้ว ✦" : "จุดดาวแล้ว ใช้ " + STAR_COST + " แสง");
   }
   function lightWander(i) {
     if (state.wander.indexOf(i) > -1) { toast("ดาวดวงนี้สว่างอยู่แล้ว"); return; }
     if (!spend(STAR_COST)) return;
-    state.wander.push(i); rerenderGarden(); toast("จุดดาวแล้ว ใช้ " + STAR_COST + " แสง");
+    state.wander.push(i); rerenderGarden(); sparkleAt('[data-wander="' + i + '"] .hit'); toast("จุดดาวแล้ว ใช้ " + STAR_COST + " แสง");
   }
+  function sparkleAt(sel) { var el = document.querySelector("#stage " + sel); if (el && window.Ambient) Ambient.ring(el); }
   function pickDecor(id) {
     var d = decorById(id);
     if (placedOf(id)) { decorSheet(id); return; }
@@ -815,6 +819,7 @@
         return '<button class="' + (k === f[0] ? "on" : "") + '" data-fs="' + f[0] + '" aria-pressed="' + (k === f[0]) + '"><span class="ka" style="font-size:' + Math.round(22 * FS[f[0]]) + 'px" aria-hidden="true">ก</span>' + f[1] + (f[0] === "normal" ? " (เริ่มต้น)" : "") + '</button>';
       }).join("") + '</div>' +
       '<p class="fs-preview" aria-live="polite"><small>ตัวอย่างข้อความ</small>คืนนี้ท้องฟ้าใส ดาวเล็ก ๆ ค่อย ๆ ส่องแสง</p></div>' +
+      motionCard() +
       '<div class="list">' +
       '<a class="row link" href="#stats"><span class="ico">' + I.chart + '</span><span class="txt"><span class="name">สถิติการนอน</span><span class="sub">7 คืนล่าสุด</span></span>' + I.chev + '</a>' +
       '<a class="row link" href="#winddown"><span class="ico">' + I.bell + '</span><span class="txt"><span class="name">เวลาเตรียมนอน</span><span class="sub">' + (state.wind.on ? "เปิด · " + hhmm(state.wind.time) + " น." : "ปิดอยู่") + '</span></span>' + I.chev + '</a>' +
@@ -831,6 +836,14 @@
       '<button class="btn ghost" id="resetBtn">' + I.reset + '<span>รีเซ็ตเดโม</span></button>' +
       '</div>' + tabbar("settings") + '</section>';
   };
+  /* animation pass: "ภาพเคลื่อนไหว เปิด/ปิด" (default เปิด, saved in localStorage by js/ambient.js) */
+  function motionCard() {
+    var on = !window.Ambient || Ambient.settingOn();
+    return '<div class="card"><div class="motion-row"><div class="motion-tx"><b>ภาพเคลื่อนไหว</b>' +
+      '<span class="sub">หิ่งห้อย ดาว และกองไฟขยับช้า ๆ ปิดได้ถ้าอยากให้ภาพนิ่ง</span></div>' +
+      '<button class="switch" role="switch" aria-checked="' + on + '" id="motionToggle" aria-label="ภาพเคลื่อนไหว"><span class="knob"></span><span class="st">' + (on ? "เปิด" : "ปิด") + '</span></button></div>' +
+      (reduced ? '<p class="sub small">เครื่องนี้ตั้งให้ลดภาพเคลื่อนไหวไว้ ภาพจึงนิ่งอยู่</p>' : "") + '</div>';
+  }
   function addNight(kind) {
     state.extra.push(kind);
     var s = S(), r = s.nights[s.nights.length - 1], L = window.NL_lightFor(r.night);
@@ -872,6 +885,9 @@
     var r = parse(), y = 0, sc = app.querySelector(".body.scroll");
     if (r.name === current && sc) y = sc.scrollTop;
     app.innerHTML = screens[r.name](r.arg);
+    /* animation pass: soft settle only when the screen changes (re-renders of the same screen stay still) */
+    if (r.name !== current && app.firstElementChild) app.firstElementChild.classList.add("enter");
+    if (window.Ambient) Ambient.scan({ place: state.place });
     var sc2 = app.querySelector(".body.scroll"); if (sc2 && r.name === current) sc2.scrollTop = y;
     if (r.name === "sounds") updateTimerLabel();
   }
@@ -943,6 +959,8 @@
       case "wtoggle": state.wind.on = !state.wind.on; save(); render(); return;
       case "wsave": save(); toast("บันทึกแล้ว (เดโม ยังไม่แจ้งเตือนจริง)"); return;
       case "resetBtn": confirmReset(); return;
+      case "motionToggle":
+        var mon = !Ambient.settingOn(); Ambient.setEnabled(mon); render(); toast(mon ? "เปิดภาพเคลื่อนไหวแล้ว" : "ปิดภาพเคลื่อนไหวแล้ว"); return;
       case "gn":
         var sid = t.closest(".reader").dataset.id;
         if (state.read[sid]) { toast("ฝันดีนะ ✦"); return; }

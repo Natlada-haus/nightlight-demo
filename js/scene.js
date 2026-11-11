@@ -272,7 +272,8 @@
     s += '<g class="pet-badge" data-go="pet" role="button" tabindex="0" aria-label="แมวน้อย ' + st.petName + ' ดูรายละเอียด">' +
       '<circle cx="' + pt.x + '" cy="' + pt.y + '" r="44" fill="#0B1433" fill-opacity=".55"/>' +
       '<rect x="' + (pt.x - 41) + '" y="' + (pt.y - 41) + '" width="82" height="82" rx="41" fill="#1C2858"/>' +
-      '<image href="' + st.petImg + '" x="' + (pt.x - 46) + '" y="' + (pt.y - 50) + '" width="92" height="92" clip-path="url(#petclip)" preserveAspectRatio="xMidYMid slice"/>' +
+      /* clip on a wrapper so the (animated) portrait breathes inside a still round frame */
+      '<g clip-path="url(#petclip)"><image class="pet-img" href="' + st.petImg + '" x="' + (pt.x - 46) + '" y="' + (pt.y - 50) + '" width="92" height="92" preserveAspectRatio="xMidYMid slice"/></g>' +
       '<circle cx="' + pt.x + '" cy="' + pt.y + '" r="40" fill="none" stroke="#FFE3B8" stroke-width="3"/>' +
       '<rect x="' + (pt.x - 40) + '" y="' + (pt.y + 34) + '" width="80" height="28" rx="14" fill="#0B1433" fill-opacity=".92" stroke="#FFE3B8" stroke-opacity=".6"/>' +
       '<text x="' + pt.x + '" y="' + (pt.y + 54) + '" text-anchor="middle" font-size="16" font-weight="600" fill="#FFF3C4">' + st.petName + '</text></g>';

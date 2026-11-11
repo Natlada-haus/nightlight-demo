@@ -512,3 +512,101 @@ textarea:focus-visible { border-color: var(--accent); outline: 3px solid var(--a
 .splash h1.wordmark { margin: 0 auto; line-height: 0; }
 .splash h1.wordmark img { display: block; width: min(300px, 80vw); height: auto; margin: 0 auto; filter: drop-shadow(0 4px 18px rgba(6,10,30,.55)); }
 .splash .th-name { margin-top: 2px; }
+
+/* =====================================================================
+   ANIMATION PASS (11 Nov 2026) — calm "alive" motion, bedtime-gentle.
+   - Everything here is slow: no brightness change faster than ~0.5 Hz, no motion on text being read.
+   - Off under prefers-reduced-motion (global rule above) AND when the user sets
+     "ภาพเคลื่อนไหว" to ปิด (html.motion-off, set before first paint in index.html).
+   - Only transform / opacity (composited) on HTML; particles live in js/ambient.js (one canvas per scene).
+   ===================================================================== */
+
+/* user switch: same effect as the OS reduced-motion setting */
+html.motion-off *, html.motion-off *::before, html.motion-off *::after { animation: none !important; transition: none !important; }
+html.motion-off .orb.b-in, html.motion-off .orb.b-hold, html.motion-off .orb.b-out, html.motion-off .orb.b-rest { transform: scale(.85); }
+html.motion-off .orb.b-in, html.motion-off .orb.b-hold { background: radial-gradient(circle, rgba(255,210,122,.45) 0%, rgba(199,188,245,.28) 60%, rgba(199,188,245,.08) 100%); }
+
+/* settings row for the switch */
+.motion-row { display: flex; align-items: center; gap: 12px; }
+.motion-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.motion-tx b { font-size: 1.125rem; line-height: 1.5; }
+
+/* ambient canvases (js/ambient.js): never take taps, sit under the HUD / text */
+.amb-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+.garden .stage .amb-canvas { z-index: 1; }
+.bedtime .hero .amb-canvas { z-index: 1; }
+.amb-fx { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 35; pointer-events: none; }
+
+/* 7. screen transitions: soft cross-fade + small upward settle; sub-screens come in a touch from the right.
+   Only on route change (.enter is added by render()), so re-renders of the same screen stay still. */
+.screen { animation: none; }
+.screen.enter { animation: settle .32s cubic-bezier(.2,.7,.3,1) both; }
+.screen.sub.enter { animation-name: settle-sub; }
+@keyframes settle { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes settle-sub { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
+
+/* 3. very slow background drift (painted art only; text and tap targets never move) */
+.splash-paint { animation: drift 56s ease-in-out infinite alternate; transform-origin: 78% 60%; }
+.bedtime .hero { animation: drift 60s ease-in-out infinite alternate; transform-origin: 50% 0; }
+@keyframes drift { from { transform: scale(1); } to { transform: scale(1.03); } }
+/* garden: no drift on purpose — the painted place is one SVG with the stars/decor/pet on top, and scaling the
+   <image> would repaint the whole SVG every frame on phones; the canvas layer carries the life there. */
+
+/* 2. garden: lit stars breathe softly, staggered */
+.garden .stage .slot.lit > circle[fill^="url"] { animation: glowtw 5s ease-in-out infinite alternate; }
+.garden .stage .slot.lit:nth-of-type(2n) > circle[fill^="url"] { animation-duration: 6.2s; animation-delay: -2.1s; }
+.garden .stage .slot.lit:nth-of-type(3n) > circle[fill^="url"] { animation-duration: 5.6s; animation-delay: -3.7s; }
+@keyframes glowtw { from { opacity: 1; } to { opacity: .55; } }
+
+/* 4. pet "นุ่มนิ่ม": idle breathing, a slow small sway, and a brief soft blink-squash in each 8 s cycle */
+.pet-big img, .stg.cur .stg-img img, .garden .pet-img {
+  transform-origin: 50% 85%; transform-box: fill-box;
+  animation: petbreathe 8s ease-in-out infinite, petsway 11s ease-in-out infinite;
+}
+@keyframes petbreathe {
+  0%, 50%, 86%, 100% { scale: 1; }
+  25%, 75% { scale: 1.03; }
+  88% { scale: 1.01 .97; }
+  90% { scale: 1; }
+}
+@keyframes petsway { 0%, 100% { rotate: 0deg; } 30% { rotate: 2deg; } 65% { rotate: -1.5deg; } }
+/* a tiny sparkle floats up beside the pet on its page, about every 10 s (hidden when motion is off) */
+.pet-hero { position: relative; }
+.pet-hero::before {
+  content: ""; position: absolute; top: 34px; left: calc(50% + 74px); width: 14px; height: 14px; opacity: 0; pointer-events: none;
+  background: #FFE7A8; clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+  filter: drop-shadow(0 0 4px rgba(255,210,122,.8)); animation: petspark 10s ease-in-out 2s infinite;
+}
+@keyframes petspark { 0%, 70% { opacity: 0; transform: translateY(0) scale(.6); } 80% { opacity: .9; transform: translateY(-10px) scale(1); } 100% { opacity: 0; transform: translateY(-22px) scale(.8); } }
+
+/* 5. light collect: the counter glows softly once */
+.bd.total .num.glow { animation: countglow 1.6s ease-out both; }
+@keyframes countglow { 0% { text-shadow: 0 0 0 rgba(255,210,122,0); } 40% { text-shadow: 0 0 18px rgba(255,210,122,.75); } 100% { text-shadow: 0 0 6px rgba(255,210,122,.2); } }
+
+/* 8. dream card detail: a slow sheen drifts across the picture, plus a few soft sparkles */
+.pic.modal-card::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  background: linear-gradient(105deg, rgba(255,255,255,0) 35%, rgba(255,246,220,.16) 50%, rgba(255,255,255,0) 65%);
+  transform: translateX(-100%); animation: sheen 7s ease-in-out 1s infinite;
+}
+.pic.modal-card::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 1; opacity: 0;
+  background:
+    radial-gradient(circle at 22% 28%, rgba(255,243,196,.9) 0 1.5px, rgba(255,243,196,0) 5px),
+    radial-gradient(circle at 74% 18%, rgba(255,243,196,.85) 0 1.2px, rgba(255,243,196,0) 4px),
+    radial-gradient(circle at 62% 64%, rgba(255,243,196,.8) 0 1.5px, rgba(255,243,196,0) 5px),
+    radial-gradient(circle at 30% 78%, rgba(255,243,196,.8) 0 1.2px, rgba(255,243,196,0) 4px);
+  animation: cardspark 6s ease-in-out infinite;
+}
+@keyframes sheen { 0% { transform: translateX(-100%); } 60%, 100% { transform: translateX(100%); } }
+@keyframes cardspark { 0%, 100% { opacity: .15; } 50% { opacity: .9; } }
+
+/* 6. gentle press feedback (no hover-only effects) */
+@media (prefers-reduced-motion: no-preference) {
+  html:not(.motion-off) :is(.btn, .hub, .row.link, .dcard:not(.empty), .story, .place, .item, .gitem, .seg > a, .seg > button, .pill-btn, .switch, .icon-btn, .tabbar a) {
+    transition: transform .4s cubic-bezier(.34,1.56,.64,1), filter .2s;
+  }
+  html:not(.motion-off) :is(.btn, .hub, .row.link, .dcard:not(.empty), .story, .place, .item, .gitem, .seg > a, .seg > button, .pill-btn, .switch, .icon-btn, .tabbar a):active {
+    transform: scale(.97); transition-duration: .08s;
+  }
+}
