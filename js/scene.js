@@ -187,13 +187,18 @@
      img frame, 7 constellation star centres (open sky, >= 56 apart), small stars, label spot, 6 ground spots, pet spot */
   var VB_H = 560;
   function cupAt(cx, cy) { return CONST.stars.map(function (p) { return { x: cx + p.x, y: cy + p.y }; }); }
-  var GROUND6 = function (b) { return [35, 99, 163, 227, 291, 355].map(function (x) { return { x: x, b: b }; }); };
+  /* 6 ground spots per place. The widest painted item (tent, ~78 units) must stay >= 8 units inside the
+     390-wide viewBox, so spot centres keep to x 47..343 (v3 fix: the telescope/tent/bench used to poke past 390).
+     Same-row centres stay >= 56 apart; spots in rows < 56 apart vertically also keep >= 56 apart sideways,
+     so every 48x48 target keeps >= 8 px spacing (WCAG 2.5.8). */
+  var GROUND6 = function (b) { return [47, 106, 165, 225, 284, 343].map(function (x) { return { x: x, b: b }; }); };
   var PLACE_LAYOUT = {
     sea: { img: "assets/art/garden.jpg", ar: 1484 / 780, scale: 1.12, x: -24, y: -49,
       stars: cupAt(40, 176), label: { x: 150, y: 322 },
       wander: [{ x: 352, y: 196 }, { x: 352, y: 268 }, { x: 30, y: 372 }],
-      /* sea islet: characters sit at x≈75–250, so spots keep to the free grass at the sides (fix pass 3) */
-      spots: [{ x: 14, b: 484 }, { x: 62, b: 546 }, { x: 256, b: 484 }, { x: 314, b: 484 }, { x: 372, b: 484 }, { x: 314, b: 546 }], pet: { x: 330, y: 360 } },
+      /* sea islet: characters sit at x~75-285, so spots keep to the free grass at the sides; the front pair sits
+         on the grass (b 524), not on the rocky waterline (v3 fix) */
+      spots: [{ x: 47, b: 470 }, { x: 47, b: 526 }, { x: 287, b: 470 }, { x: 343, b: 470 }, { x: 287, b: 526 }, { x: 343, b: 526 }], pet: { x: 330, y: 352 } },   /* between the wander star (gap 10) and the back-row targets (pill bottom 414, gap 8) */
     meadow: { img: "assets/art/meadow.jpg", ar: 1690 / 780, scale: 1, x: 0, y: -90,
       stars: cupAt(30, 176), label: { x: 140, y: 322 },
       wander: [{ x: 324, y: 196 }],
@@ -207,6 +212,25 @@
       label: null, wander: [],
       spots: GROUND6(550), pet: { x: 56, y: 430 } }
   };
+  /* v3 seasonal dresses of the sea garden (same constellation, label, wander stars and pet as "sea";
+     only the painted frame and the ground spots follow each painting) */
+  function seaSeason(key, o) {
+    var b = PLACE_LAYOUT.sea, L = {};
+    for (var k in b) L[k] = b[k];
+    for (var j in o) L[j] = o[j];
+    L.season = key;
+    PLACE_LAYOUT["sea-" + key] = L;
+  }
+  /* tuned on screenshots (tools/screenshot-v3.py "garden-season-*"): decor on snow / grass / rocks / deck, never on water,
+     and clear of the painted characters' feet */
+  seaSeason("winter", { img: "assets/art/garden-winter.jpg", ar: 1690 / 780, scale: 1, x: 0, y: -90,
+    spots: [{ x: 47, b: 476 }, { x: 47, b: 532 }, { x: 287, b: 476 }, { x: 343, b: 476 }, { x: 287, b: 532 }, { x: 343, b: 532 }] });
+  /* ลอยกระทง: the islet fills only the left 2/3 and the characters most of it, so the frame is 1.2x and the
+     front row stands on the near rocks; decor a touch smaller so it stays below their feet */
+  seaSeason("loykrathong", { img: "assets/art/garden-loykrathong.jpg", ar: 1690 / 780, scale: 1.2, x: -10, y: -238, decorScale: 0.85,
+    spots: [{ x: 47, b: 556 }, { x: 106, b: 556 }, { x: 250, b: 500 }, { x: 283, b: 556 }, { x: 165, b: 556 }, { x: 224, b: 556 }] });
+  seaSeason("songkran", { img: "assets/art/garden-songkran.jpg", ar: 1690 / 780, scale: 1, x: 0, y: -150, decorScale: 0.85,
+    spots: [{ x: 47, b: 548 }, { x: 106, b: 548 }, { x: 287, b: 488 }, { x: 343, b: 488 }, { x: 287, b: 548 }, { x: 343, b: 548 }] });
 
   function sparkle(x, y, r) {
     var k = r * 0.28;
@@ -223,14 +247,14 @@
   /* st = { place, stars[], wander[], decor:[{id, spot}], unlocked, mode: null|"place"|"move", moving, petImg, petName } */
   function gardenScene(st) {
     var W = 390, H = VB_H, id = "gd";
-    var L = PLACE_LAYOUT[st.place] || PLACE_LAYOUT.sea;
+    var L = PLACE_LAYOUT[st.layout || st.place] || PLACE_LAYOUT[st.place] || PLACE_LAYOUT.sea;
     var lit = st.stars || [], wander = st.wander || [], placed = st.decor || [];
     var iw = W * L.scale, ih = iw * L.ar;
     var s = '<svg class="scene" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMax slice">' + defs(id) +
       '<defs><linearGradient id="gdtopshade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0A1230" stop-opacity=".7"/><stop offset="1" stop-color="#0A1230" stop-opacity="0"/></linearGradient>' +
       '<clipPath id="petclip"><circle cx="' + L.pet.x + '" cy="' + L.pet.y + '" r="40"/></clipPath></defs>' +
       '<rect width="390" height="' + H + '" fill="#16204A"/>' +
-      '<image class="place-img" href="' + L.img + '" x="' + L.x + '" y="' + L.y + '" width="' + iw + '" height="' + ih + '" preserveAspectRatio="xMidYMin slice"/>' +
+      '<image class="place-img" href="' + L.img + '" onerror="this.style.display=\'none\'" x="' + L.x + '" y="' + L.y + '" width="' + iw + '" height="' + ih + '" preserveAspectRatio="xMidYMin slice"/>' +
       '<rect width="390" height="130" fill="url(#gdtopshade)"/>';
 
     var P = L.stars;
@@ -282,7 +306,7 @@
     var used = {};
     placed.slice().sort(function (a, b) { return L.spots[a.spot].b - L.spots[b.spot].b; }).forEach(function (d) {
       var sp = L.spots[d.spot]; if (!sp) return; used[d.spot] = 1;
-      var di = DECOR_IMG[d.id], h = di[0], w = h * di[1];
+      var di = DECOR_IMG[d.id], h = di[0] * (L.decorScale || 1), w = h * di[1];   /* v3: busier seasonal paintings draw decor a little smaller */
       var moving = st.mode === "move" && st.moving === d.id;
       /* while placing/moving, placed decor rests (not tappable) so only the highlighted spots are targets */
       s += (st.mode ? '<g class="decor-in resting' + (moving ? " moving" : "") + '" aria-hidden="true" style="pointer-events:none">'
@@ -351,5 +375,5 @@
     return '<svg viewBox="0 0 64 64" aria-hidden="true">' + THUMBS[id] + '</svg>';
   }
 
-  window.NLArt = { splashScene: splashScene, gardenScene: gardenScene, morningArt: morningArt, thumb: thumb, decorIcon: decorIcon, DECOR: DECOR, CONST: CONST, CONST2: CONST2, PLACE_LAYOUT: PLACE_LAYOUT, sparkle: sparkle, miniConst: miniConst };
+  window.NLArt = { DECOR_IMG: DECOR_IMG, splashScene: splashScene, gardenScene: gardenScene, morningArt: morningArt, thumb: thumb, decorIcon: decorIcon, DECOR: DECOR, CONST: CONST, CONST2: CONST2, PLACE_LAYOUT: PLACE_LAYOUT, sparkle: sparkle, miniConst: miniConst };
 })();

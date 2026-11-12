@@ -1,14 +1,33 @@
-/* Moonpuff demo (repo: nightlight-demo) — app logic (hash router + localStorage state).
-   ทุกตัวเลขการนอนเป็นข้อมูลตัวอย่าง (เดโม) · ไม่มีการเรียกเครือข่าย */
+/* Moonpuff demo — app logic (hash router + localStorage state).
+   ตัวเลขการนอนเป็นข้อมูลตัวอย่าง (เดโม) จนกว่าผู้ใช้จะนำเข้าไฟล์จาก Apple Health (อ่านในเครื่อง ไม่ส่งไปไหน)
+   ไม่มีการเรียกเครือข่ายภายนอก · localStorage keys: nightlight-demo-v2, nightlight-text-size, nightlight-motion,
+   v3 adds nightlight-music, nightlight-idle, nightlight-import, nightlight-warm, nightlight-season */
 (function () {
   "use strict";
   var KEY = "nightlight-demo-v2", FS_KEY = "nightlight-text-size";
   var STAR_COST = 10, READ_REWARD = 5, NOTE_REWARD = 5, START_BALANCE = 0;
   var NIGHTS = window.NL_NIGHTS, STORIES = window.NL_STORIES, Art = window.NLArt;
   var CARDS = window.NL_CARDS, PLACES = window.NL_PLACES, PET = window.NL_PET, RULES = window.NL_RULES;
-  var LAST = NIGHTS[NIGHTS.length - 1];            // เมื่อคืน (คืนวันอังคาร 10 พ.ย.) → เช้าวันพุธ 11 พ.ย.
-  var LAST_LIGHT = window.NL_lightFor(LAST);       // {base:100, bonus:20, total:120}
+  var CATS = window.NL_CAT_STORIES, LULL = window.NL_LULLABIES, SEASONS = window.NL_SEASONS;
   var TODAY_CARD = "river";
+  var TH_DAYS = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"], TH_DAY_S = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
+  var TH_MON = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+
+  /* ---------- v3: imported nights (Apple Health, parsed on this device) ---------- */
+  var IMP_KEY = "nightlight-import";
+  function loadImport() {
+    try { var v = JSON.parse(localStorage.getItem(IMP_KEY)); if (v && v.nights && v.nights.length) { v.nights.forEach(decorate); return v; } } catch (e) {}
+    return null;
+  }
+  function decorate(n) {
+    var d = new Date(n.date + "T12:00:00Z");
+    if (!n.day) n.day = TH_DAY_S[d.getUTCDay()];
+    if (!n.label) n.label = d.getUTCDate() + " " + TH_MON[d.getUTCMonth()];
+    return n;
+  }
+  var IMP = loadImport();
+  function baseNights() { return IMP ? IMP.nights : NIGHTS; }
+  function lastBase() { var b = baseNights(); return b[b.length - 1]; }   // เมื่อคืน (เดโม: คืนวันอังคาร 10 พ.ย. → เช้าวันพุธ 11 พ.ย.)
 
   /* ---------- state ---------- */
   function fresh() {
@@ -16,14 +35,18 @@
       v: 2, balance: START_BALANCE, collected: false, cards: ["island", "rain", "whale", "lanterns", "bakery"],
       stars: [], wander: [], decor: [], gift: true, connected: {}, read: {}, place: "sea",
       extra: [], celebrated: false, notes: [], noteDay: "", wind: { on: false, time: 22 * 60 + 30 },
-      snd: {}, sndTimer: 0
+      snd: {}, sndTimer: 0, collectedFor: "", catMax: 0, lastSnd: ""
     };
   }
   var state = load();
   function load() {
     try {
       var s = JSON.parse(localStorage.getItem(KEY));
-      if (s && s.v === 2) { var f = fresh(); for (var k in f) if (!(k in s)) s[k] = f[k]; return s; }
+      if (s && s.v === 2) {
+        var f = fresh(); for (var k in f) if (!(k in s)) s[k] = f[k];
+        if (s.collected && !s.collectedFor) s.collectedFor = "2026-11-10";   /* v2 saves: that morning was the 10 Nov night */
+        return s;
+      }
     } catch (e) {}
     return fresh();
   }
@@ -31,8 +54,8 @@
 
   /* ---------- derived numbers (one source for every screen) ---------- */
   function allNights() {
-    var out = NIGHTS.slice(), d = new Date(LAST.date + "T12:00:00Z");
-    var days = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"], months = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+    var out = baseNights().slice(), d = new Date(lastBase().date + "T12:00:00Z");
+    var days = TH_DAY_S, months = TH_MON;
     state.extra.forEach(function (kind) {
       d.setUTCDate(d.getUTCDate() + 1);
       var iso = d.toISOString().slice(0, 10);
@@ -43,6 +66,19 @@
     return out;
   }
   function S() { var n = allNights(); return window.computeStreak(n, n[n.length - 1].date); }
+  function morningNight() { return lastBase(); }
+  function morningDone() { return state.collectedFor === morningNight().date; }
+  function morningLabel(n) {
+    var d = new Date(n.date + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 1);
+    return "วัน" + TH_DAYS[d.getUTCDay()] + "ที่ " + d.getUTCDate() + " " + TH_MON[d.getUTCMonth()];
+  }
+  /* นิทานนุ่มนิ่ม: 1 เรื่องต่อ 1 คืน (คืนในข้อมูล + คืนตัวอย่างที่เพิ่ม; คืนล่าสุดเปิดตอนกด "เก็บแสง") · เปิดแล้วไม่ปิดอีก */
+  function catCount() {
+    var n = baseNights().length - (morningDone() ? 0 : 1) + state.extra.length;
+    n = Math.max(0, Math.min(CATS.length, n));
+    if (n > (state.catMax || 0)) { state.catMax = n; save(); }
+    return Math.max(n, state.catMax || 0);
+  }
   function unlockedStars(s) { return Math.min(7, s.totalOnTime); }
   function petStage(total) {
     for (var i = PET.stages.length - 1; i >= 0; i--) if (total >= PET.stages[i].from) return i;
@@ -145,6 +181,10 @@
     leaf: ic('<path d="M12 21V11"/><path d="M12 11C8 11 5 8 5 3c4 0 7 3 7 8z"/><path d="M12 14c3 0 6-2 6-6-3 0-6 2-6 6z"/>'),
     fan: ic('<circle cx="12" cy="12" r="2"/><path d="M12 10c-1-4 0-7 3-7 2 0 2 3-1 5M14 12c4-1 7 0 7 3 0 2-3 2-5-1M12 14c1 4 0 7-3 7-2 0-2-3 1-5M10 12c-4 1-7 0-7-3 0-2 3-2 5 1"/>'),
     noise: ic('<path d="M3 12h2l2-6 3 12 3-9 2 6 2-3h4"/>'),
+    note: ic('<path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>'),
+    week: ic('<rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/><path d="M7.5 14h2M11 14h2M14.5 14h2M7.5 17h2"/>'),
+    upload: ic('<path d="M12 15V4M7.5 8.5 12 4l4.5 4.5"/><path d="M5 14v5a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-5"/>'),
+    sun: ic('<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>'),
     star: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="' + SPARK_D + '" fill="#FFD27A"/></svg>',
     restMoon: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4a8 8 0 1 0 5 13A7 7 0 0 1 15 4z" fill="#C7BCF5"/></svg>',
     lateDot: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6" fill="none" stroke="#C2C7EA" stroke-width="2.2"/></svg>'
@@ -171,6 +211,9 @@
   function fmtClock(sec) { sec = Math.max(0, Math.ceil(sec)); return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0"); }
   function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   var DEMO = '<span class="demo-label">ข้อมูลตัวอย่าง (เดโม)</span>';
+  var IMPL = '<span class="demo-label imp">ข้อมูลที่คุณนำเข้า · เก็บในเครื่องนี้เท่านั้น</span>';
+  function dataLabel() { return IMP ? IMPL : DEMO; }
+  function fmtBig(m) { var h = Math.floor(m / 60), mm = m % 60; return h + '<small>ชม.</small>' + (mm ? ' ' + mm + '<small>นาที</small>' : ""); }
 
   function tabbar(on) {
     var t = [["garden", "สวน", I.garden], ["bedtime", "ก่อนนอน", I.moon], ["collect", "สะสม", I.album], ["settings", "ตั้งค่า", I.gear]];
@@ -194,7 +237,7 @@
       '<span class="tag">เดโม</span>' +
       '<div class="top"><h1 class="wordmark"><img src="assets/art/moonpuff-wordmark.png" alt="Moonpuff" width="720" height="206"></h1><p class="th-name">มูนพัฟ</p>' +
       '<p class="tagline">นอนเต็มอิ่ม ฟ้าเต็มดาว</p>' +
-      '<p class="sub">เข้านอนตรงเวลา<br>แล้วฟ้าของคุณจะสว่างขึ้นทีละดวง</p></div>' +
+      '<p class="sub">เข้านอนตรงเวลา<br>แล้วดาวบนฟ้าของคุณจะสว่างขึ้นทีละดวง</p></div>' +
       '<div class="bottom"><button class="btn primary big" data-go="connect">' + I.spark + '<span>เริ่มเลย</span></button>' +
       '<p class="fine">เกมเล็ก ๆ ชวนเข้านอนให้เป็นเวลา</p></div></section>';
   };
@@ -224,44 +267,47 @@
   }
 
   screens.morning = function () {
-    var s = S(), done = state.collected, c = cardById(TODAY_CARD);
-    var head = '<div class="art">' + Art.morningArt() + '<div class="greet"><h1>อรุณสวัสดิ์</h1><p>วันพุธที่ 11 พ.ย.</p></div></div>';
+    var s = S(), M = morningNight(), L = window.NL_lightFor(M), done = morningDone(), c = cardById(TODAY_CARD);
+    var head = '<div class="art">' + Art.morningArt() + '<div class="greet"><h1>อรุณสวัสดิ์</h1><p>' + morningLabel(M) + '</p></div></div>';
     var sleep = '<div class="card"><div class="card-head">' + I.moon + '<b>เมื่อคืนคุณนอน</b></div>' +
-      '<div class="sleep-big">7<small>ชม.</small> 12<small>นาที</small></div>' +
-      '<div class="sub">เข้านอน ' + LAST.bed + ' น. · ตื่น ' + LAST.wake + ' น.</div>' + DEMO + '</div>';
+      '<div class="sleep-big">' + fmtBig(M.mins) + '</div>' +
+      '<div class="sub">เข้านอน ' + M.bed + ' น. · ตื่น ' + M.wake + ' น.</div>' +
+      (M.inBed ? '<div class="sub">อยู่บนเตียงรวม ' + fmtHM(M.inBed) + '</div>' : "") + dataLabel() + '</div>';
     if (!done) {
       return '<section class="screen morning">' + head + '<div class="body scroll">' + sleep +
         '<div class="card"><div class="card-head">' + I.star + '<b>เข้านอนตรงเวลาต่อกัน ' + s.run + ' คืน</b></div>' +
-        '<p class="sub">คืนพักสัปดาห์นี้ ใช้แล้ว ' + s.restUsedThisWeek + '/' + s.restPerWeek + '</p>' + DEMO + nightStrip(s) + '</div>' +
-        '<p class="soft">' + I.info + '<span>มีแสงและการ์ดความฝันรอคุณอยู่</span></p>' +
+        '<p class="sub">คืนพักสัปดาห์นี้ ใช้แล้ว ' + s.restUsedThisWeek + '/' + s.restPerWeek + '</p>' + dataLabel() + nightStrip(s) + '</div>' +
+        '<p class="soft">' + I.info + '<span>มีแสง การ์ดความฝัน และนิทานใหม่รออยู่</span></p>' +
         '</div><div class="foot"><button class="btn primary big" id="collect">' + I.spark + '<span>เก็บแสง</span></button></div></section>';
     }
+    var k = catCount(), story = k > 0 ? CATS[k - 1] : null;
     return '<section class="screen morning done">' + head + '<div class="body scroll">' +
       '<div class="card got"><div class="card-head">' + I.spark + '<b>ได้แสงเช้านี้</b></div>' +
-      '<div class="breakdown"><div class="bd"><span>' + I.moon + 'นอน 7 ชม. 12 นาที</span><b>+' + LAST_LIGHT.base + '</b></div>' +
-      '<div class="bd"><span>' + I.clock + 'เข้านอนตรงเวลา</span><b>+' + LAST_LIGHT.bonus + '</b></div>' +
-      '<div class="bd total"><span>รวม</span><span class="num"><span id="count">' + LAST_LIGHT.total + '</span> แสง</span></div></div>' +
-      '<p class="sub">แสงที่มีตอนนี้ ' + state.balance + ' แสง · ' + DEMO + '</p></div>' +
+      '<div class="breakdown"><div class="bd"><span>' + I.moon + 'นอน ' + fmtHM(M.mins) + '</span><b>+' + L.base + '</b></div>' +
+      (L.bonus ? '<div class="bd"><span>' + I.clock + 'เข้านอนตรงเวลา</span><b>+' + L.bonus + '</b></div>' : "") +
+      '<div class="bd total"><span>รวม</span><span class="num"><span id="count">' + L.total + '</span> แสง</span></div></div>' +
+      '<p class="sub">แสงที่มีตอนนี้ ' + state.balance + ' แสง</p>' + dataLabel() + '</div>' +
       '<div class="card dream"><div class="card-head">' + I.album + '<b>การ์ดความฝันวันนี้</b></div>' +
       imgOr(c.img, c.title, "dream-img", c.pos) +
       '<h2>' + c.title + '</h2><p class="sub">' + c.cap + '</p>' +
       '<p class="ok-line">' + I.check + '<span>เก็บเข้าสมุดสะสมแล้ว</span></p></div>' +
+      (story ? '<a class="hub cat-today" href="#cat/' + (k - 1) + '"><span class="ico">' + I.paw + '</span><span class="tx"><b>นิทานของนุ่มนิ่มคืนนี้</b><span>“' + story.title + '”</span></span>' + I.chev + '</a>' : "") +
       '</div><div class="foot"><button class="btn primary big" data-go="garden">' + I.garden + '<span>ไปที่สวน</span></button></div></section>';
   };
   function collectMorning() {
-    if (state.collected) return;
-    state.collected = true; state.balance += LAST_LIGHT.total;
+    if (morningDone()) return;
+    var L = window.NL_lightFor(morningNight());
+    state.collectedFor = morningNight().date; state.collected = true; state.balance += L.total;
     if (state.cards.indexOf(TODAY_CARD) < 0) state.cards.push(TODAY_CARD);
-    save(); render();
-    countUp();
+    save(); catCount(); render();
+    countUp(L.total);
     /* animation pass: gentle golden sparkles rise to the counter, which glows softly once */
     var cnt = document.getElementById("count");
     if (cnt && window.Ambient && Ambient.allowed()) { cnt.parentNode.classList.add("glow"); Ambient.collectBurst(cnt); }
-    toast("เก็บแสงแล้ว +" + LAST_LIGHT.total + " แสง");
+    toast("เก็บแสงแล้ว +" + L.total + " แสง");
   }
-  function countUp() {
+  function countUp(target) {
     var el = document.getElementById("count"); if (!el) return;
-    var target = LAST_LIGHT.total;
     if (reduced || (window.Ambient && !Ambient.allowed())) { el.textContent = target; return; }
     var t0 = null, dur = 1200;
     function step(t) {
@@ -276,7 +322,7 @@
   var G = { mode: null, sel: null };   // mode: "place" (new item from tray) | "move" (existing item)
   function sceneState() {
     var s = S(), st = petStage(s.totalOnTime);
-    return { place: state.place, stars: state.stars, wander: state.wander, decor: state.decor, unlocked: unlockedStars(s),
+    return { place: state.place, layout: layoutKey(), stars: state.stars, wander: state.wander, decor: state.decor, unlocked: unlockedStars(s),
       mode: G.mode, moving: G.sel, petImg: PET.stages[st].img, petName: PET.name };
   }
   screens.garden = function () {
@@ -284,11 +330,11 @@
     return '<section class="screen garden"><div class="gscroll scroll">' +
       '<div class="stage" id="stage">' + Art.gardenScene(sceneState()) +
       '<div class="hud"><span class="balance" id="bal" aria-live="polite">' + I.star + '<span class="num">' + state.balance + '</span> แสง</span>' +
-      '<span class="sp"></span><a class="pill-btn" href="#places" aria-label="เปลี่ยนฉาก ตอนนี้: ' + place.name + '">' + I.map + '<span>ฉาก</span></a></div>' +
+      '<span class="sp"></span><a class="pill-btn" href="#places" aria-label="เปลี่ยนฉาก ตอนนี้: ' + place.name + (place.id === "sea" && seasonNow() !== "normal" ? " (" + seasonName(seasonNow()) + ")" : "") + '">' + I.map + '<span>ฉาก</span></a></div>' +
       '<div id="modeslot">' + modeBar() + '</div></div>' +
-      '<div class="tray"><p class="tray-hint star-hint">' + I.star + '<span>แตะวงดาวสีเหลืองเพื่อจุด ดวงละ ' + STAR_COST + ' แสง</span></p>' +
+      '<div class="tray"><p class="tray-hint star-hint">' + I.star + '<span>แตะวงสีเหลืองบนฟ้าเพื่อจุดดาว ดวงละ ' + STAR_COST + ' แสง</span></p>' +
       '<div class="tray-head"><h2>' + I.garden + 'ของแต่งสวน</h2><a class="pill-btn small" href="#decor">' + I.grid + '<span>ดูทั้งหมด</span></a></div>' +
-      '<p class="tray-hint">แตะของ แล้วแตะที่ว่างในสวนเพื่อวาง</p>' +
+      '<p class="tray-hint">เลือกของ แล้วแตะวงสีเหลืองในสวนเพื่อวาง</p>' +
       '<div class="tray-list" id="tray">' + trayItems() + '</div></div></div>' +
       tabbar("garden") + '</section>';
   };
@@ -325,7 +371,7 @@
   function lightStar(i) {
     var s = S(), un = unlockedStars(s);
     if (state.stars.indexOf(i) > -1) { toast("ดาวดวงนี้สว่างอยู่แล้ว"); return; }
-    if (i >= un) { toast("นอนตรงเวลาอีก " + (i + 1 - s.totalOnTime) + " คืน ดาวดวงนี้ก็จุดได้"); return; }
+    if (i >= un) { toast("นอนตรงเวลาอีก " + (i + 1 - s.totalOnTime) + " คืน ก็จุดดาวดวงนี้ได้"); return; }
     if (!spend(STAR_COST)) return;
     state.stars.push(i); rerenderGarden(); sparkleAt('[data-star="' + i + '"] .hit');
     toast(state.stars.length === 7 ? "กลุ่มดาวถ้วยชาครบแล้ว ✦" : "จุดดาวแล้ว ใช้ " + STAR_COST + " แสง");
@@ -363,7 +409,7 @@
     var d = decorById(id), p = placedOf(id);
     modal({
       art: '<span class="sheet-art">' + Art.decorIcon(id) + '</span>', title: d.name,
-      body: "อยากทำอะไรกับ" + d.name + "?",
+      body: "จะทำอะไรกับ" + d.name + "ดี",
       actions: [
         { label: "ย้ายไปที่อื่น", icon: I.move, fn: function () { if (location.hash !== "#garden") location.hash = "#garden"; G.mode = "move"; G.sel = id; setTimeout(rerenderGarden, 0); } },
         { label: p.paid ? "เก็บคืน (ได้แสงคืน " + p.paid + ")" : "เก็บคืน", icon: I.undo, kind: "ghost", fn: function () { removeDecor(id); } },
@@ -383,7 +429,7 @@
 
   screens.decor = function () {
     return '<section class="screen sub decor-all">' + topbar("garden", "ของแต่งสวนทั้งหมด") +
-      '<div class="body scroll"><p class="lead">แตะของที่อยากวาง แล้วแตะที่ว่างในสวน</p>' +
+      '<div class="body scroll"><p class="lead">แตะของที่อยากวาง แล้วแตะวงสีเหลืองในสวน</p>' +
       '<p class="balance-line">' + I.star + 'มีแสง ' + state.balance + ' แสง</p>' +
       '<div class="grid2">' + Art.DECOR.map(function (d) { return itemCard(d, "gitem"); }).join("") + '</div></div></section>';
   };
@@ -398,7 +444,7 @@
         var st = cur ? '<span class="status on">' + I.check + 'กำลังใช้</span>' : un ? '<span class="status">' + I.chev + 'แตะเพื่อใช้</span>'
           : '<span class="status locked">' + I.lock + (p.needRun ? 'นอนตรงเวลาต่อกันอีก ' : 'นอนตรงเวลาอีก ') + placeLeft(p, s) + ' คืน</span>';
         return '<button class="place' + (cur ? " cur" : "") + (un ? "" : " locked") + '" data-place="' + p.id + '" aria-pressed="' + cur + '"' + (un ? "" : ' aria-disabled="true"') + '>' +
-          imgOr(p.img, "", "place-img", p.pos || "center 60%") + '<span class="place-tx"><b>' + p.name + (p.needRun ? ' <span class="tag gold">รางวัลพิเศษ</span>' : "") + '</b>' + st + '</span></button>';
+          imgOr(p.id === "sea" ? Art.PLACE_LAYOUT[seaLayoutKey()].img : p.img, "", "place-img", p.id === "sea" && seasonNow() !== "normal" ? "center 70%" : (p.pos || "center 60%")) + '<span class="place-tx"><b>' + p.name + (p.needRun ? ' <span class="tag gold">รางวัลพิเศษ</span>' : "") + '</b>' + st + '</span></button>';
       }).join("") + '</div>' +
       '<div class="foot"><button class="btn primary" data-go="garden">' + I.garden + '<span>ไปที่สวน</span></button></div></section>';
   };
@@ -429,11 +475,11 @@
 
   /* ---------- collection book ---------- */
   screens.collect = function (tab) {
-    tab = ["decor", "const", "cards"].indexOf(tab) > -1 ? tab : "cards";
-    var tabs = [["cards", "การ์ดความฝัน", I.album], ["const", "กลุ่มดาว", I.spark], ["decor", "ของแต่ง", I.garden]];
-    var body = tab === "cards" ? collectCards() : tab === "const" ? collectConst() : collectDecor();
+    tab = ["decor", "const", "cards", "stories"].indexOf(tab) > -1 ? tab : "cards";
+    var tabs = [["cards", "การ์ดความฝัน", I.album], ["const", "กลุ่มดาว", I.spark], ["decor", "ของแต่ง", I.garden], ["stories", "นิทาน", I.paw]];
+    var body = tab === "cards" ? collectCards() : tab === "const" ? collectConst() : tab === "stories" ? catList() : collectDecor();
     return '<section class="screen collect"><header class="head"><h1>' + I.album + 'สมุดสะสม</h1></header>' +
-      '<div class="seg" role="tablist" aria-label="หมวดสะสม">' + tabs.map(function (t) {
+      '<div class="seg tabs4" role="tablist" aria-label="หมวดสะสม">' + tabs.map(function (t) {
         return '<a role="tab" href="#collect/' + t[0] + '" aria-selected="' + (tab === t[0]) + '" class="' + (tab === t[0] ? "on" : "") + '">' + t[2] + '<span>' + t[1] + '</span></a>';
       }).join("") + '</div><div class="body scroll" role="tabpanel">' + body + '</div>' + tabbar("collect") + '</section>';
   };
@@ -453,7 +499,7 @@
     return '<p class="lead">จุดดาวในสวนเพื่อต่อเป็นกลุ่มดาว</p>' +
       '<div class="card const-card"><span class="cico">' + Art.miniConst(Art.CONST, 7 /*shape preview*/) + '</span><div><b>' + Art.CONST.name + '</b>' +
       '<p class="sub">จุดแล้ว ' + lit + '/7 ดวง</p><div class="progress"><i style="width:' + (lit / 7 * 100).toFixed(1) + '%"></i></div>' +
-      '<p class="sub">ดาวปลดล็อกตามคืนที่นอนตรงเวลารวม (' + unlockedStars(s) + '/7)</p></div></div>' +
+      '<p class="sub">ดาวจะเปิดให้จุดตามจำนวนคืนที่นอนตรงเวลา (' + unlockedStars(s) + '/7)</p></div></div>' +
       '<div class="card const-card' + (special ? "" : " locked") + '"><span class="cico">' + Art.miniConst(Art.CONST2, special ? 7 : 0) + '</span><div><b>' + Art.CONST2.name + ' <span class="tag gold">รางวัลพิเศษ</span></b>' +
       '<p class="sub">' + (special ? I.check + ' ได้แล้ว จากการนอนตรงเวลาต่อกัน 7 คืน' : I.lock + ' นอนตรงเวลาต่อกันอีก ' + Math.max(1, RULES.rewardRun - s.run) + ' คืน (คืนพักนับด้วย)') + '</p></div></div>' +
       '<div class="card const-card locked"><span class="cico">' + I.spark + '</span><div><b>ยังไม่ได้</b><p class="sub">กลุ่มดาวใหม่จะมาเร็ว ๆ นี้</p></div></div>';
@@ -466,20 +512,46 @@
     modal({ art: imgOr(c.img, c.title, "modal-card", c.pos), title: c.title, body: c.cap, actions: [{ label: "ปิด", icon: I.close }] });
   }
 
+  /* ---------- v3: นิทานของนุ่มนิ่ม ---------- */
+  function catList() {
+    var n = catCount(), html = '<div class="cat-head">' + imgOr(PET.stages[petStage(S().totalOnTime)].img, "", "cat-mini") +
+      '<p class="lead">นิทานสั้น ๆ คืนละเรื่อง อ่านออกเสียงช้า ๆ ก็ได้</p></div>' +
+      '<p class="sub">เปิดแล้ว ' + n + ' จาก ' + CATS.length + ' เรื่อง</p><div class="list">';
+    for (var i = n - 1; i >= 0; i--) {
+      html += '<a class="row link cat-row" href="#cat/' + i + '"><span class="ico">' + I.paw + '</span><span class="txt"><span class="name">' + CATS[i].title + '</span>' +
+        '<span class="sub">เรื่องที่ ' + (i + 1) + (i === n - 1 ? ' · ใหม่ล่าสุด' : "") + '</span></span>' + I.chev + '</a>';
+    }
+    html += '</div>' + (n < CATS.length ? '<div class="cat-locked">' + I.lock + '<span>คืนต่อไปจะมีนิทานใหม่</span></div>' : '<p class="sub center">อ่านครบทุกเรื่องแล้ว</p>');
+    return html;
+  }
+  screens.cat = function (arg) {
+    var n = catCount();
+    if (arg != null && arg !== "" && +arg >= 0 && +arg < n) {
+      var st = CATS[+arg];
+      return '<section class="screen sub catread">' + topbar("cat", "นิทานของนุ่มนิ่ม") +
+        '<article class="body scroll cat-story"><span class="cat-no">เรื่องที่ ' + (+arg + 1) + '</span><h2>' + st.title + '</h2>' +
+        st.lines.map(function (l) { return '<p>' + l + '</p>'; }).join("") + '<p class="end">' + I.moon + '<span>ราตรีสวัสดิ์</span></p></article></section>';
+    }
+    return '<section class="screen sub catlist">' + topbar("bedtime", "นิทานของนุ่มนิ่ม") + '<div class="body scroll">' + catList() + '</div></section>';
+  };
+
   /* ---------- bedtime hub ---------- */
   var HUB = [
     ["quiet", "นั่งนิ่ง ๆ", "ตั้งเวลา 3 · 5 · 10 นาที", I.lotus],
     ["breathe", "หายใจช้า ๆ", "ทำตามวงกลม 1–3 นาที", I.breath],
     ["sounds", "เสียงก่อนนอน", "ฝน คลื่น กองไฟ และอื่น ๆ", I.music],
+    ["music", "เพลงกล่อม", "กล่องดนตรี เปียโน กระดิ่งเบา ๆ", I.note],
+    ["cat", "นิทานของนุ่มนิ่ม", "นิทานสั้น ๆ คืนละเรื่อง", I.paw],
     ["read", "อ่านก่อนนอน 5 นาที", "เรื่องสั้นอ่านสบาย 5 เรื่อง", I.book],
     ["gratitude", "ขอบคุณวันนี้", "เขียนสั้น ๆ ก่อนนอน", I.heart],
-    ["winddown", "เวลาเตรียมนอน", "ตั้งเวลาเตือนให้เริ่มพัก", I.bell]
+    ["winddown", "เวลาเตรียมนอน", "ตั้งเวลาเตือนให้เริ่มพัก", I.bell],
+    ["night", "ถ้าตื่นกลางดึก", "หายใจช้า ๆ แล้วเปิดเสียงเบา ๆ", I.moon]
   ];
   screens.bedtime = function () {
-    var playing = Snd.playingNames();
+    var playing = Snd.allNames();
     return '<section class="screen bedtime"><div class="hero" aria-hidden="true"></div><header class="head"><h1>' + I.moon + 'ก่อนนอน</h1><p class="lead">เลือกสิ่งที่อยากทำ ทำช้า ๆ ได้เลย</p></header>' +
       '<div class="body scroll">' +
-      (playing.length ? '<div class="now-playing">' + I.music + '<span>กำลังเปิดเสียง: ' + playing.join(", ") + '</span><button class="btn ghost small" id="stopAll">' + I.stop + '<span>หยุดเสียง</span></button></div>' : "") +
+      (playing.length ? '<div class="now-playing">' + I.music + '<span>กำลังเล่น: ' + playing.join(" · ") + '</span><button class="btn ghost small" id="stopAll">' + I.stop + '<span>หยุดทั้งหมด</span></button></div>' : "") +
       HUB.map(function (h) {
         return '<a class="hub" href="#' + h[0] + '"><span class="ico">' + h[3] + '</span><span class="tx"><b>' + h[1] + '</b><span>' + h[2] + '</span></span>' + I.chev + '</a>';
       }).join("") + '</div>' + tabbar("bedtime") + '</section>';
@@ -579,34 +651,53 @@
     ["crickets", "ป่ากลางคืน (จิ้งหรีด)", I.leaf], ["fan", "พัดลม", I.fan], ["noise", "เสียงซ่า", I.noise]
   ];
   var VOL = [0.12, 0.25, 0.45, 0.7, 1.0];
+  /* v3: lullabies (เพลงกล่อม) share the engine, the master gain and the sleep timer with the nature sounds.
+     One lullaby at a time; its own volume (5 steps) saved in nightlight-music; off by default. */
+  var MUS_KEY = "nightlight-music", MISSING = {}, musChecked = false;
+  function isMus(id) { return id.indexOf("lullaby-") === 0; }
+  function musCfg() {
+    var m = null; try { m = JSON.parse(localStorage.getItem(MUS_KEY)); } catch (e) {}
+    return { vol: m && m.vol >= 0 && m.vol <= 4 ? m.vol : 2, last: m && m.last || "" };
+  }
+  var MUS = musCfg();
+  function musSave() { try { localStorage.setItem(MUS_KEY, JSON.stringify(MUS)); } catch (e) {} }
+  function trackById(id) { return LULL.filter(function (t) { return t.id === id; })[0]; }
+  function soundName(id) { if (isMus(id)) { var t = trackById(id); return t ? t.name : id; } var x = SOUNDS.filter(function (q) { return q[0] === id; })[0]; return x ? x[1] : id; }
+  var FADE_S = 40;   /* the shared sleep timer fades everything out over the last 40 s, then stops */
   var Snd = {
     nodes: {}, buffers: {}, master: null, end: 0, iv: null, fading: false,
     ext: function () { var a = document.createElement("audio"); return a.canPlayType('audio/ogg; codecs="vorbis"') ? "ogg" : "m4a"; },
     cfg: function (id) { return state.snd[id] || (state.snd[id] = { on: false, vol: 2 }); },
+    level: function (id) { return VOL[isMus(id) ? MUS.vol : this.cfg(id).vol]; },
     ensureMaster: function () { var c = ctx(); if (!c) return null; if (!this.master) { this.master = c.createGain(); this.master.connect(c.destination); } return c; },
     start: function (id) {
-      var self = this, c = this.ensureMaster(), url = "assets/sounds/" + id + "." + this.ext(), v = VOL[this.cfg(id).vol];
+      var self = this, c = this.ensureMaster(), url = "assets/sounds/" + id + "." + this.ext(), v = this.level(id);
       if (this.nodes[id]) return;
       var node = { gain: null, src: null, el: null }; this.nodes[id] = node;
+      state.lastSnd = id;
       function viaElement() { // fallback when fetch is not possible (e.g. opened from file://)
+        if (self.nodes[id] !== node) return;
         var el = new Audio(url); el.loop = true; el.volume = v * self.masterLevel(); el.play().catch(function () {}); node.el = el;
       }
       if (!c || location.protocol === "file:") { viaElement(); return; }
       var go = function (buf) {
         if (self.nodes[id] !== node) return;
-        var src = c.createBufferSource(), g = c.createGain(); src.buffer = buf; src.loop = true; g.gain.value = v;
+        var src = c.createBufferSource(), g = c.createGain(); src.buffer = buf; src.loop = true; g.gain.value = self.level(id);
         src.connect(g); g.connect(self.master); src.start(); node.src = src; node.gain = g;
       };
       if (this.buffers[id]) go(this.buffers[id]);
-      else fetch(url).then(function (r) { return r.arrayBuffer(); }).then(function (ab) { return c.decodeAudioData(ab); })
-        .then(function (buf) { buf = self.exactLoop(c, buf); self.buffers[id] = buf; go(buf); }).catch(viaElement);
+      else fetch(url).then(function (r) { if (!r.ok) throw new Error("missing"); return r.arrayBuffer(); }).then(function (ab) { return c.decodeAudioData(ab); })
+        .then(function (buf) { buf = self.exactLoop(c, buf, self.loopOf(id)); self.buffers[id] = buf; go(buf); })
+        .catch(function (e) { if (e && e.message === "missing") { MISSING[id] = true; self.stop(id); if (current === "music" || current === "sounds") render(); } else viaElement(); });
     },
     /* AAC (.m4a, Safari) adds encoder padding: up to ~2k priming samples at the start (if the decoder keeps them)
-       and a padded, faded last frame. Cut the decoded audio to exactly one 24 s loop so the wrap point is the
-       seamless crossfade made by tools/make_sounds.py, not the padding (which would click). */
+       and a padded, faded last frame. Cut the decoded audio to exactly one loop so the wrap point is the seamless
+       crossfade made by tools/make_sounds.py / make_lullabies.py, not the padding (which would click).
+       v3: the loop length is per file (nature 24 s; lullabies 48 s / 51.43 s), not a fixed 24 s. */
     LOOP_S: 24,
-    exactLoop: function (c, buf) {
-      var sr = buf.sampleRate, n = Math.round(this.LOOP_S * sr), d = buf.getChannelData(0), off = 0, lim = Math.min(d.length, 4096);
+    loopOf: function (id) { var t = trackById(id); return t ? t.loop : this.LOOP_S; },
+    exactLoop: function (c, buf, secs) {
+      var sr = buf.sampleRate, n = Math.round((secs || this.LOOP_S) * sr), d = buf.getChannelData(0), off = 0, lim = Math.min(d.length, 4096);
       while (off < lim && Math.abs(d[off]) < 1e-4) off++;
       if (off >= lim) off = 0;
       if (off + n > d.length) return buf;
@@ -615,9 +706,20 @@
       return out;
     },
     stop: function (id) { var n = this.nodes[id]; if (!n) return; try { if (n.src) n.src.stop(); } catch (e) {} if (n.el) n.el.pause(); delete this.nodes[id]; },
-    setVol: function (id) { var n = this.nodes[id], v = VOL[this.cfg(id).vol]; if (!n) return; if (n.gain) n.gain.gain.setTargetAtTime(v, actx.currentTime, 0.1); if (n.el) n.el.volume = v * this.masterLevel(); },
-    masterLevel: function () { if (!this.end) return 1; var left = (this.end - Date.now()) / 1000; return left >= 30 ? 1 : Math.max(0, left / 30); },
+    setVol: function (id) { var n = this.nodes[id], v = this.level(id); if (!n) return; if (n.gain) n.gain.gain.setTargetAtTime(v, actx.currentTime, 0.1); if (n.el) n.el.volume = v * this.masterLevel(); },
+    masterLevel: function () { if (!this.end) return 1; var left = (this.end - Date.now()) / 1000; return left >= FADE_S ? 1 : Math.max(0, left / FADE_S); },
     playingNames: function () { var self = this; return SOUNDS.filter(function (s) { return self.nodes[s[0]]; }).map(function (s) { return s[1]; }); },
+    musicPlaying: function () { var self = this; return (LULL.filter(function (t) { return self.nodes[t.id]; })[0] || {}).id || null; },
+    allNames: function () { var m = this.musicPlaying(), n = this.playingNames(); return (m ? ["เพลง" + soundName(m)] : []).concat(n.length ? [n.join(", ")] : []); },
+    anyPlaying: function () { return Object.keys(this.nodes).length > 0; },
+    playMusic: function (id) {
+      var cur = this.musicPlaying(); if (cur === id) return;
+      if (cur) this.stop(cur);
+      MUS.last = id; musSave(); this.start(id);
+    },
+    stopMusic: function () { var m = this.musicPlaying(); if (m) this.stop(m); this.idleCheck(); },
+    stopNature: function () { var self = this; SOUNDS.forEach(function (s) { self.stop(s[0]); self.cfg(s[0]).on = false; }); this.idleCheck(); save(); },
+    idleCheck: function () { if (!this.anyPlaying() && this.end) this.setTimer(0); },
     stopAll: function () {
       var self = this; Object.keys(this.nodes).forEach(function (id) { self.stop(id); });
       SOUNDS.forEach(function (s) { self.cfg(s[0]).on = false; });
@@ -628,41 +730,84 @@
       if (this.master && actx) { this.master.gain.cancelScheduledValues(actx.currentTime); this.master.gain.setValueAtTime(1, actx.currentTime); }
       this.end = min ? Date.now() + min * 60000 : 0;
       if (!min) { updateTimerLabel(); return; }
-      this.iv = setInterval(function () {
-        var left = (self.end - Date.now()) / 1000;
-        if (left <= 30 && !self.fading && self.master && actx) { // fade out over the last 30 s
-          self.fading = true; self.master.gain.setValueAtTime(self.master.gain.value, actx.currentTime);
-          self.master.gain.linearRampToValueAtTime(0, actx.currentTime + Math.max(0.1, left));
-        }
-        Object.keys(self.nodes).forEach(function (id) { var n = self.nodes[id]; if (n.el) n.el.volume = VOL[self.cfg(id).vol] * self.masterLevel(); });
-        if (left <= 0) { self.stopAll(); state.sndTimer = 0; save(); if (current === "sounds") render(); return; }
-        updateTimerLabel();
-      }, 1000);
+      this.iv = setInterval(function () { self.tick(); }, 1000);
+      updateTimerLabel();
+    },
+    tick: function () {
+      var self = this, left = (this.end - Date.now()) / 1000;
+      if (!this.end) return;
+      if (left <= FADE_S && !this.fading) { // fade out over the last 40 s (Web Audio ramp; <audio> fallback steps each second)
+        this.fading = true;
+        if (this.master && actx) { this.master.gain.setValueAtTime(this.master.gain.value, actx.currentTime); this.master.gain.linearRampToValueAtTime(0, actx.currentTime + Math.max(0.1, left)); }
+      }
+      Object.keys(this.nodes).forEach(function (id) { var n = self.nodes[id]; if (n.el) n.el.volume = self.level(id) * self.masterLevel(); });
+      if (left <= 0) { this.stopAll(); state.sndTimer = 0; save(); if (current === "sounds" || current === "music" || current === "night" || current === "bedtime") render(); return; }
       updateTimerLabel();
     }
   };
   function updateTimerLabel() {
     var el = document.getElementById("tleft2"); if (!el) return;
-    el.textContent = Snd.end ? "เสียงจะค่อย ๆ เบาลงแล้วปิดเองใน " + fmtClock((Snd.end - Date.now()) / 1000) : "เปิดไว้จนกว่าจะกดปิด";
+    el.textContent = Snd.end ? "จะค่อย ๆ เบาลง แล้วหยุดเองในอีก " + fmtClock((Snd.end - Date.now()) / 1000) + " นาที" : "ยังไม่ได้ตั้งเวลา เปิดไว้จนกว่าจะกดหยุด";
+  }
+  function timerCard() {
+    return '<div class="card timer-card"><div class="card-head">' + I.clock + '<b>ตั้งเวลาให้เพลงและเสียงค่อย ๆ เบาลง แล้วหยุด</b></div>' +
+      '<div class="seg" role="group" aria-label="ตั้งเวลาปิดเพลงและเสียง">' +
+      [[0, "ไม่ตั้งเวลา"], [15, "15 นาที"], [30, "30 นาที"], [45, "45 นาที"], [60, "60 นาที"]].map(function (t) {
+        return '<button class="' + (state.sndTimer === t[0] ? "on" : "") + '" data-stimer="' + t[0] + '" aria-pressed="' + (state.sndTimer === t[0]) + '">' + t[1] + '</button>';
+      }).join("") + '</div><p class="sub" id="tleft2"></p><p class="sub small">ใช้เวลาเดียวกันทั้งเพลงกล่อมและเสียงก่อนนอน</p></div>';
+  }
+  function volRow(key, label, vol) {
+    return '<div class="vol" role="group" aria-label="ความดัง ' + label + '"><button class="round" ' + key + ' data-d="-1" aria-label="เบาลง ' + label + '"' + (vol <= 0 ? " disabled" : "") + '>' + I.minus + '</button>' +
+      '<span class="steps" aria-label="ความดัง ' + (vol + 1) + ' จาก 5">' + [0, 1, 2, 3, 4].map(function (k) { return '<i class="' + (k <= vol ? "f" : "") + '" style="height:' + (10 + k * 5) + 'px"></i>'; }).join("") +
+      '<em>' + (vol + 1) + '/5</em></span>' +
+      '<button class="round" ' + key + ' data-d="1" aria-label="ดังขึ้น ' + label + '"' + (vol >= 4 ? " disabled" : "") + '>' + I.plus + '</button></div>';
   }
   screens.sounds = function () {
     return '<section class="screen sub sounds">' + topbar("bedtime", "เสียงก่อนนอน") +
-      '<div class="body scroll"><p class="lead">เปิดได้หลายเสียงพร้อมกัน ปรับดังเบาด้วยปุ่ม − และ +</p>' +
+      '<div class="body scroll"><p class="lead">เปิดได้หลายเสียงพร้อมกัน ปรับเสียงดังเบาด้วยปุ่ม − และ +</p>' +
       SOUNDS.map(function (s) {
         var c = Snd.cfg(s[0]), on = !!Snd.nodes[s[0]];
         return '<div class="snd' + (on ? " on" : "") + '" data-snd-row="' + s[0] + '"><button class="snd-toggle" data-snd="' + s[0] + '" aria-pressed="' + on + '">' +
           '<span class="ico">' + s[2] + '</span><span class="tx"><b>' + s[1] + '</b><span class="st">' + (on ? I.play + "กำลังเล่น" : "แตะเพื่อเปิด") + '</span></span><span class="onoff">' + (on ? "ปิด" : "เปิด") + '</span></button>' +
-          '<div class="vol" role="group" aria-label="ความดัง ' + s[1] + '"><button class="round" data-vol="' + s[0] + '" data-d="-1" aria-label="เบาลง ' + s[1] + '"' + (c.vol <= 0 ? " disabled" : "") + '>' + I.minus + '</button>' +
-          '<span class="steps" aria-label="ความดัง ' + (c.vol + 1) + ' จาก 5">' + [0, 1, 2, 3, 4].map(function (k) { return '<i class="' + (k <= c.vol ? "f" : "") + '" style="height:' + (10 + k * 5) + 'px"></i>'; }).join("") +
-          '<em>' + (c.vol + 1) + '/5</em></span>' +
-          '<button class="round" data-vol="' + s[0] + '" data-d="1" aria-label="ดังขึ้น ' + s[1] + '"' + (c.vol >= 4 ? " disabled" : "") + '>' + I.plus + '</button></div></div>';
-      }).join("") +
-      '<div class="card timer-card"><div class="card-head">' + I.clock + '<b>ตั้งเวลาปิดเสียง</b></div><div class="seg" role="group" aria-label="ตั้งเวลาปิดเสียง">' +
-      [[0, "ไม่ปิด"], [15, "15 นาที"], [30, "30 นาที"], [60, "60 นาที"]].map(function (t) {
-        return '<button class="' + (state.sndTimer === t[0] ? "on" : "") + '" data-stimer="' + t[0] + '" aria-pressed="' + (state.sndTimer === t[0]) + '">' + t[1] + '</button>';
-      }).join("") + '</div><p class="sub" id="tleft2"></p></div>' +
+          volRow('data-vol="' + s[0] + '"', s[1], c.vol) + '</div>';
+      }).join("") + timerCard() +
       '<p class="fine-print">' + I.info + '<span>เสียงทั้งหมดสร้างขึ้นเองด้วยโปรแกรมสำหรับเดโมนี้</span></p></div>' +
-      '<div class="foot"><button class="btn primary" id="stopAll"' + (Snd.playingNames().length ? "" : " disabled") + '>' + I.stop + '<span>หยุดทุกเสียง</span></button></div></section>';
+      '<div class="foot"><button class="btn primary" id="stopNature"' + (Snd.playingNames().length ? "" : " disabled") + '>' + I.stop + '<span>หยุดเสียงทั้งหมด</span></button></div></section>';
+  };
+
+  /* ---------- v3: เพลงกล่อม ---------- */
+  function checkTracks() {
+    if (musChecked || location.protocol === "file:") return; musChecked = true;
+    var ext = Snd.ext();
+    LULL.forEach(function (t) {
+      fetch("assets/sounds/" + t.id + "." + ext, { method: "HEAD" }).then(function (r) { if (!r.ok) { MISSING[t.id] = true; if (current === "music") render(); } }).catch(function () {});
+    });
+  }
+  screens.music = function () {
+    var cur = Snd.musicPlaying(), list = LULL.filter(function (t) { return !MISSING[t.id]; });
+    return '<section class="screen sub music">' + topbar("bedtime", "เพลงกล่อม") +
+      '<div class="body scroll"><p class="lead">เลือกได้ทีละเพลง เปิดพร้อมเสียงก่อนนอนก็ได้</p>' +
+      (list.length ? list.map(function (t) {
+        var on = cur === t.id;
+        return '<button class="track' + (on ? " on" : "") + '" data-mus="' + t.id + '" aria-pressed="' + on + '"><span class="ico">' + I.note + '</span>' +
+          '<span class="tx"><b>' + t.name + '</b><span class="st">' + (on ? I.play + "กำลังเล่น" : t.note) + '</span></span><span class="onoff">' + (on ? "หยุด" : "เล่น") + '</span></button>';
+      }).join("") : '<p class="empty">ยังไม่มีเพลงในเครื่องนี้</p>') +
+      '<div class="card"><div class="card-head">' + I.music + '<b>ความดังของเพลง</b></div>' + volRow('data-mvol="1"', "เพลงกล่อม", MUS.vol) + '</div>' +
+      timerCard() +
+      '<p class="fine-print">' + I.info + '<span>เพลงทั้งหมดแต่งและสร้างขึ้นเองสำหรับเดโมนี้</span></p></div>' +
+      '<div class="foot"><button class="btn primary" id="stopMusic"' + (cur ? "" : " disabled") + '>' + I.stop + '<span>หยุดเพลง</span></button></div></section>';
+  };
+
+  /* ---------- v3: ถ้าตื่นกลางดึก ---------- */
+  screens.night = function () {
+    var id = state.lastSnd && (isMus(state.lastSnd) ? trackById(state.lastSnd) && !MISSING[state.lastSnd] : SOUNDS.some(function (x) { return x[0] === state.lastSnd; })) ? state.lastSnd : "rain";
+    var playing = Snd.anyPlaying();
+    return '<section class="screen sub night">' + topbar("bedtime", "ถ้าตื่นกลางดึก") +
+      '<div class="body scroll center-col"><p class="lead center">ไม่ต้องรีบ ค่อย ๆ หายใจตามวงกลม</p>' +
+      '<div class="orb-wrap"><div class="orb run"></div><div class="orb-tx"><span class="night-word">หายใจเข้าช้า ๆ<br>แล้วหายใจออกยาว ๆ</span></div></div>' +
+      '<p class="sub center" id="tleft2"></p></div>' +
+      '<div class="foot">' + (playing ? '<button class="btn ghost big" id="nightStop">' + I.stop + '<span>หยุดเสียง</span></button>'
+        : '<button class="btn primary big" id="nightPlay" data-id="' + id + '">' + I.play + '<span>' + (isMus(id) ? "เปิดเพลง" : "เปิดเสียง") + soundName(id) + '</span></button>') + '</div></section>';
   };
 
   /* ---------- reading ---------- */
@@ -767,7 +912,8 @@
     var avg = Math.round(last.reduce(function (a, r) { return a + r.night.mins; }, 0) / last.length);
     var ontime = last.filter(function (r) { return r.kind === "ontime"; }).length;
     return '<section class="screen sub stats">' + topbar("settings", "สถิติการนอน") +
-      '<div class="body scroll"><p class="lead">7 คืนล่าสุด (' + last[0].night.label + ' – ' + last[last.length - 1].night.label + ')</p>' + DEMO +
+      '<div class="body scroll"><p class="lead">' + last.length + ' คืนล่าสุด (' + last[0].night.label + ' – ' + last[last.length - 1].night.label + ')</p>' + dataLabel() +
+      '<a class="row link" href="#week"><span class="ico">' + I.week + '</span><span class="txt"><span class="name">สรุปการนอน 7 คืน</span><span class="sub">ดูแบบง่าย ๆ เป็นประโยค</span></span>' + I.chev + '</a>' +
       '<div class="card chart"><div class="card-head">' + I.chart + '<b>ชั่วโมงนอน</b></div>' + chartSVG(last) +
       '<div class="legend"><span>' + I.star + 'ตรงเวลา</span><span>' + I.restMoon + 'คืนพัก</span><span>' + I.lateDot + 'นอนดึก</span><span><i class="dash"></i>7 ชม. = แสงเต็ม</span></div>' +
       '</div>' +
@@ -777,20 +923,21 @@
       }).join("") + '</div>' +
       '<div class="tiles">' +
       '<div class="tile"><div class="k">' + I.moon + 'นอนเฉลี่ย</div><div class="v">' + Math.floor(avg / 60) + '<small>ชม.</small> ' + (avg % 60) + '<small>นาที</small></div></div>' +
-      '<div class="tile"><div class="k">' + I.clock + 'ตรงเวลา</div><div class="v">' + ontime + '<small>/7 คืน</small></div></div>' +
+      '<div class="tile"><div class="k">' + I.clock + 'ตรงเวลา</div><div class="v">' + ontime + '<small>/' + last.length + ' คืน</small></div></div>' +
       '<div class="tile"><div class="k">' + I.spark + 'แสงจากการนอน</div><div class="v light">' + total + '<small>แสง</small></div></div>' +
       '<div class="tile"><div class="k">' + I.restMoon + 'คืนพักสัปดาห์นี้</div><div class="v">' + s.restUsedThisWeek + '<small>/2 ใช้แล้ว</small></div></div></div>' +
       '<div class="card"><div class="card-head">' + I.star + '<b>ต่อกันตอนนี้ ' + s.run + ' คืน · ตรงเวลารวม ' + s.totalOnTime + ' คืน</b></div>' +
-      '<p class="sub">คืนที่นอนดึกจะใช้คืนพักให้เองอัตโนมัติ (สัปดาห์ละ 2 คืน เริ่มนับใหม่ทุกวันจันทร์) ไม่มีอะไรหายไป</p></div>' +
+      '<p class="sub">คืนที่นอนดึกจะใช้คืนพักให้เอง (สัปดาห์ละ 2 คืน เริ่มนับใหม่ทุกวันจันทร์) ไม่มีอะไรหายไป</p></div>' +
       '</div></section>';
   };
   function chartSVG(rows) {
-    var W = 326, H = 200, top = 26, bot = 32, left = 30, maxH = 9;
+    var W = 326, H = 200, top = 26, bot = 32, left = 30;
+    var maxH = Math.min(12, Math.max(9, Math.ceil(Math.max.apply(0, rows.map(function (r) { return r.night.mins / 60; })))));
     var ph = H - top - bot, bw = 26, step = (W - left - 4) / rows.length;
     var y = function (h) { return top + ph * (1 - h / maxH); };
     var col = { ontime: "#FFD27A", rest: "#C7BCF5", late: "#8D94C4" };
-    var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="กราฟชั่วโมงนอน 7 คืน ข้อมูลตัวอย่าง">';
-    [0, 3, 6, 9].forEach(function (h) {
+    var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="กราฟชั่วโมงนอน ' + rows.length + ' คืน ' + (IMP ? "ข้อมูลที่คุณนำเข้า" : "ข้อมูลตัวอย่าง") + '">';
+    [0, 3, 6, 9, 12].filter(function (h) { return h <= maxH; }).forEach(function (h) {
       s += '<line x1="' + left + '" x2="' + (W - 4) + '" y1="' + y(h) + '" y2="' + y(h) + '" stroke="rgba(221,224,245,.18)"/>' +
         '<text x="' + (left - 8) + '" y="' + (y(h) + 5) + '" text-anchor="end" font-size="16" fill="#C2C7EA">' + h + '</text>';
     });
@@ -809,6 +956,80 @@
     return '<circle cx="' + x + '" cy="' + y + '" r="4" fill="none" stroke="#1A1633" stroke-width="2"/>';
   }
 
+  /* ---------- v3: สรุปการนอน 7 คืน (ตัวเลขชุดเดียวกับหน้าสถิติ) ---------- */
+  function weekNumbers() {
+    var last = S().nights.slice(-7);
+    return { rows: last, avg: Math.round(last.reduce(function (a, r) { return a + r.night.mins; }, 0) / last.length),
+      ontime: last.filter(function (r) { return r.kind === "ontime"; }).length, rest: last.filter(function (r) { return r.kind === "rest"; }).length };
+  }
+  function fmtLong(m) { var h = Math.floor(m / 60), mm = m % 60; return h + " ชั่วโมง" + (mm ? " " + mm + " นาที" : ""); }
+  var weekBack = "settings";
+  screens.week = function () {
+    var w = weekNumbers(), k = w.rows.length;
+    var s1 = k + " คืนที่ผ่านมา นอนเฉลี่ย " + fmtLong(w.avg) + " · เข้านอนตรงเวลา " + w.ontime + " คืน";
+    var s2 = w.ontime >= 5 ? "เยี่ยมเลย ฟ้าของคุณสว่างขึ้นอีกหลายดวง" : w.ontime >= 3 ? "ดีแล้ว ค่อย ๆ ไปทีละคืนนะ" : "ไม่เป็นไร คืนนี้เริ่มใหม่ได้เสมอ";
+    if (w.rest) s2 = "ใช้คืนพัก " + w.rest + " คืน ไม่มีอะไรหายไป · " + s2;
+    return '<section class="screen sub week">' + topbar(weekBack, "สรุปการนอน 7 คืน") +
+      '<div class="body scroll"><div class="card week-say"><p class="say1" id="weekS1">' + s1 + '</p><p class="say2" id="weekS2">' + s2 + '</p>' + dataLabel() + '</div>' +
+      '<div class="wk-list">' + w.rows.map(function (r) {
+        var n = r.night, k2 = { ontime: [I.star, "ตรงเวลา"], rest: [I.restMoon, "คืนพัก"], late: [I.lateDot, "นอนดึก"] }[r.kind];
+        var d = new Date(n.date + "T12:00:00Z");
+        return '<div class="wk-row ' + r.kind + '"><div class="wk-top"><b>' + TH_DAYS[d.getUTCDay()] + ' ' + n.label + '</b><span class="wk-k">' + k2[0] + k2[1] + '</span></div>' +
+          '<div class="wk-bar" aria-hidden="true"><i style="width:' + (Math.min(n.mins, 600) / 6).toFixed(1) + '%"></i><em></em></div>' +
+          '<span class="wk-h">นอน ' + fmtLong(n.mins) + '</span></div>';
+      }).join("") + '</div>' +
+      '<p class="sub small center"><i class="wk-tick-key"></i> เส้นตรงกลางคือ 7 ชั่วโมง (แสงเต็ม)</p></div></section>';
+  };
+
+  /* ---------- v3: settings helpers (warm light, season, idle lock) ---------- */
+  var WARM_KEY = "nightlight-warm", SEASON_KEY = "nightlight-season", IDLE_KEY = "nightlight-idle";
+  function warmGet() {
+    try { var w = JSON.parse(localStorage.getItem(WARM_KEY)); if (w && typeof w.on === "boolean") return { on: w.on, dim: [0, 1, 2, 3].indexOf(w.dim) > -1 ? w.dim : 0 }; } catch (e) {}
+    return { on: false, dim: 0 };
+  }
+  function warmSet(w) { try { localStorage.setItem(WARM_KEY, JSON.stringify(w)); } catch (e) {} warmApply(); }
+  function warmApply() { var w = warmGet(), h = document.documentElement; h.classList.toggle("warm", w.on); h.setAttribute("data-dim", w.on ? w.dim : 0); }
+  warmApply();
+  var NOW_OVERRIDE = null;
+  function bkkDate() {
+    var d = NOW_OVERRIDE ? new Date(NOW_OVERRIDE) : new Date();
+    try { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).format(d); }
+    catch (e) { return new Date(d.getTime() + 7 * 3600000).toISOString().slice(0, 10); }
+  }
+  function seasonPick() { var v = null; try { v = localStorage.getItem(SEASON_KEY); } catch (e) {} return SEASONS.some(function (x) { return x.id === v; }) ? v : "auto"; }
+  function seasonNow() { var p = seasonPick(); return p === "auto" ? window.NL_seasonForDate(bkkDate()) : p; }
+  function seasonName(id) { return (SEASONS.filter(function (x) { return x.id === id; })[0] || {}).name || id; }
+  function seaLayoutKey() { var s = seasonNow(); return s === "normal" || !Art.PLACE_LAYOUT["sea-" + s] ? "sea" : "sea-" + s; }
+  function layoutKey() { return state.place === "sea" ? seaLayoutKey() : state.place; }
+  function idleMin() { var v = null; try { v = localStorage.getItem(IDLE_KEY); } catch (e) {} return v === "off" ? 0 : [5, 10, 15].indexOf(+v) > -1 ? +v : 10; }
+  function settingCard(icon, title, sub, id, on) {
+    return '<div class="card"><div class="motion-row"><div class="motion-tx"><b>' + title + '</b><span class="sub">' + sub + '</span></div>' +
+      '<button class="switch" role="switch" aria-checked="' + on + '" id="' + id + '" aria-label="' + title + '"><span class="knob"></span><span class="st">' + (on ? "เปิด" : "ปิด") + '</span></button></div>';
+  }
+  function warmCard() {
+    var w = warmGet();
+    return settingCard(I.sun, "โหมดแสงอุ่น", "แสงบนจออุ่นขึ้น ดูสบายตาก่อนนอน", "warmToggle", w.on) +
+      (w.on ? '<p class="opt-label">ความสว่างของจอในแอป</p><div class="seg grid" role="group" aria-label="ความสว่างของจอในแอป">' +
+        [[0, "ปกติ"], [1, "หรี่นิดหน่อย"], [2, "หรี่ลง"], [3, "หรี่มาก"]].map(function (d) {
+          return '<button class="' + (w.dim === d[0] ? "on" : "") + '" data-dim="' + d[0] + '" aria-pressed="' + (w.dim === d[0]) + '">' + d[1] + '</button>';
+        }).join("") + '</div>' : "") + '</div>';
+  }
+  function seasonCard() {
+    var pick = seasonPick(), now = seasonNow();
+    return '<div class="card"><div class="card-head">' + I.garden + '<b>ฉากตามฤดู (สวนดาวริมทะเล)</b></div><div class="seg grid" role="group" aria-label="ฉากตามฤดู">' +
+      SEASONS.map(function (x) {
+        return '<button class="' + (pick === x.id ? "on" : "") + '" data-season="' + x.id + '" aria-pressed="' + (pick === x.id) + '">' + x.name + (x.id === "auto" ? " (เริ่มต้น)" : "") + '</button>';
+      }).join("") + '</div><p class="sub" id="seasonNow">ตอนนี้เป็นฉาก: <b class="hi">' + seasonName(now) + '</b></p>' +
+      '<p class="sub small">ตามวันที่: ลอยกระทง 21–26 พ.ย. (ปีนี้ตรงกับวันที่ 24 พ.ย. 2569) · สงกรานต์ 12–16 เม.ย. · หน้าหนาว ธ.ค.–ก.พ.</p></div>';
+  }
+  function idleCard() {
+    var m = idleMin();
+    return '<div class="card"><div class="card-head">' + I.lock + '<b>พักหน้าจอเมื่อไม่ได้แตะ</b></div><div class="seg grid" role="group" aria-label="พักหน้าจอเมื่อไม่ได้แตะ">' +
+      [[5, "5 นาที"], [10, "10 นาที"], [15, "15 นาที"], [0, "ปิด"]].map(function (x) {
+        return '<button class="' + (m === x[0] ? "on" : "") + '" data-idle="' + x[0] + '" aria-pressed="' + (m === x[0]) + '">' + x[1] + (x[0] === 10 ? " (เริ่มต้น)" : "") + '</button>';
+      }).join("") + '</div><p class="sub">จอจะมืดลง เหลือแค่นาฬิกา เพลงและเสียงยังเล่นต่อ แตะค้างไว้เพื่อกลับมา</p></div>';
+  }
+
   /* ---------- settings ---------- */
   var lastDemo = "";
   screens.settings = function () {
@@ -819,20 +1040,23 @@
         return '<button class="' + (k === f[0] ? "on" : "") + '" data-fs="' + f[0] + '" aria-pressed="' + (k === f[0]) + '"><span class="ka" style="font-size:' + Math.round(22 * FS[f[0]]) + 'px" aria-hidden="true">ก</span>' + f[1] + (f[0] === "normal" ? " (เริ่มต้น)" : "") + '</button>';
       }).join("") + '</div>' +
       '<p class="fs-preview" aria-live="polite"><small>ตัวอย่างข้อความ</small>คืนนี้ท้องฟ้าใส ดาวเล็ก ๆ ค่อย ๆ ส่องแสง</p></div>' +
-      motionCard() +
+      motionCard() + warmCard() + seasonCard() + idleCard() +
       '<div class="list">' +
       '<a class="row link" href="#stats"><span class="ico">' + I.chart + '</span><span class="txt"><span class="name">สถิติการนอน</span><span class="sub">7 คืนล่าสุด</span></span>' + I.chev + '</a>' +
+      '<a class="row link" href="#week"><span class="ico">' + I.week + '</span><span class="txt"><span class="name">สรุปการนอน 7 คืน</span><span class="sub">อ่านง่าย เป็นประโยคสั้น ๆ</span></span>' + I.chev + '</a>' +
+      '<a class="row link" href="#import"><span class="ico">' + I.heart + '</span><span class="txt"><span class="name">นำเข้าข้อมูลการนอนจาก Apple Health</span><span class="sub">' + (IMP ? "ใช้ข้อมูลที่นำเข้า " + IMP.nights.length + " คืน" : "ไฟล์อ่านในเครื่องนี้ ไม่ส่งไปไหน") + '</span></span>' + I.chev + '</a>' +
       '<a class="row link" href="#winddown"><span class="ico">' + I.bell + '</span><span class="txt"><span class="name">เวลาเตรียมนอน</span><span class="sub">' + (state.wind.on ? "เปิด · " + hhmm(state.wind.time) + " น." : "ปิดอยู่") + '</span></span>' + I.chev + '</a>' +
       '<a class="row link" href="#connect"><span class="ico">' + I.link + '</span><span class="txt"><span class="name">เชื่อมข้อมูลการนอน</span><span class="sub">แอปหรือนาฬิกาที่ใช้</span></span>' + I.chev + '</a>' +
       '<a class="row link" href="#morning"><span class="ico">' + I.spark + '</span><span class="txt"><span class="name">หน้าเช้านี้</span><span class="sub">แสงและการ์ดความฝัน</span></span>' + I.chev + '</a>' +
       '</div>' +
+      (IMP ? '<div class="card demo-box"><div class="card-head">' + I.info + '<b>ทดลองกติกา</b></div><p class="sub">ตอนนี้ใช้ข้อมูลที่คุณนำเข้า ปุ่มเพิ่มคืนตัวอย่างจึงซ่อนไว้ ลบข้อมูลที่นำเข้าเมื่อไหร่ ปุ่มจะกลับมา</p></div>' :
       '<div class="card demo-box"><div class="card-head">' + I.info + '<b>ทดลองกติกา</b><span class="tag">เดโม</span></div>' +
       '<p class="sub">ต่อกันตอนนี้ <b class="hi">' + s.run + ' คืน</b> · ตรงเวลารวม <b class="hi">' + s.totalOnTime + ' คืน</b></p>' +
       '<p class="sub">คืนพักสัปดาห์นี้ ใช้แล้ว <b class="hi">' + s.restUsedThisWeek + '/2</b></p>' +
       '<div class="demo-btns"><button class="btn ghost" data-addnight="ontime">' + I.star + '<span>เพิ่มคืนตัวอย่าง: ตรงเวลา</span></button>' +
       '<button class="btn ghost" data-addnight="late">' + I.moon + '<span>เพิ่มคืนตัวอย่าง: นอนดึก</span></button></div>' +
       (lastDemo ? '<p class="demo-result" role="status">' + lastDemo + '</p>' : "") +
-      '<p class="sub small">นอนดึกจะใช้คืนพักให้เอง (สัปดาห์ละ 2) ครบ 7 คืนต่อกันได้ห้องนอนอบอุ่น</p></div>' +
+      '<p class="sub small">นอนดึกจะใช้คืนพักให้เอง (สัปดาห์ละ 2 คืน) ครบ 7 คืนต่อกันได้ฉากห้องนอนอบอุ่น</p></div>') +
       '<button class="btn ghost" id="resetBtn">' + I.reset + '<span>รีเซ็ตเดโม</span></button>' +
       '</div>' + tabbar("settings") + '</section>';
   };
@@ -845,18 +1069,168 @@
       (reduced ? '<p class="sub small">เครื่องนี้ตั้งให้ลดภาพเคลื่อนไหวไว้ ภาพจึงนิ่งอยู่</p>' : "") + '</div>';
   }
   function addNight(kind) {
-    state.extra.push(kind);
+    if (IMP) return;
+    state.extra.push(kind); catCount();
     var s = S(), r = s.nights[s.nights.length - 1], L = window.NL_lightFor(r.night);
     state.balance += L.total; save();
-    lastDemo = r.night.label + ": " + (r.kind === "ontime" ? "ตรงเวลา" : r.kind === "rest" ? "นอนดึก → ใช้คืนพักให้อัตโนมัติ" : "นอนดึก คืนพักหมดแล้ว เริ่มนับต่อกันใหม่ (ไม่มีอะไรหาย)") + " · +" + L.total + " แสง";
+    lastDemo = r.night.label + ": " + (r.kind === "ontime" ? "ตรงเวลา" : r.kind === "rest" ? "นอนดึก ใช้คืนพักให้แล้ว" : "นอนดึก คืนพักหมดแล้ว เริ่มนับต่อกันใหม่ (ไม่มีอะไรหาย)") + " · +" + L.total + " แสง";
     render();
   }
   function confirmReset() {
     modal({ title: "รีเซ็ตเดโมไหม?", body: "แสง ของแต่ง บันทึก และคืนตัวอย่างจะกลับเป็นค่าเริ่มต้น (ขนาดตัวอักษรยังเหมือนเดิม)", actions: [
       { label: "ไม่รีเซ็ต", icon: I.close, kind: "primary" },
-      { label: "รีเซ็ตเลย", icon: I.reset, kind: "ghost danger", fn: function () { Snd.stopAll(); state = fresh(); save(); lastDemo = ""; G.mode = G.sel = null; location.hash = "#splash"; toast("รีเซ็ตเดโมแล้ว"); } }
+      { label: "รีเซ็ตเลย", icon: I.reset, kind: "ghost danger", fn: function () { Snd.stopAll(); state = fresh(); MUS = { vol: 2, last: "" }; try { localStorage.removeItem(MUS_KEY); } catch (e) {} save(); lastDemo = ""; G.mode = G.sel = null; location.hash = "#splash"; toast("รีเซ็ตเดโมแล้ว"); } }
     ] });
   }
+
+  /* ---------- v3: นำเข้าจาก Apple Health (อ่านในเครื่องเท่านั้น) ---------- */
+  var IMPST = { busy: false, p: 0, err: "" };
+  var IMP_ERR = {
+    notzip: "ไฟล์นี้ไม่ใช่ export.zip หรือ export.xml ลองเลือกใหม่อีกครั้ง",
+    noexport: "ไม่พบ export.xml ในไฟล์นี้ ลองส่งออกจากแอปสุขภาพอีกครั้ง",
+    nosleep: "ไม่พบข้อมูลการนอนในไฟล์นี้",
+    other: "อ่านไฟล์ไม่สำเร็จ ลองใหม่อีกครั้ง"
+  };
+  function thDateShort(iso) { var p = iso.split("-"); return (+p[2]) + " " + TH_MON[+p[1] - 1] + " " + (+p[0] + 543); }
+  screens["import"] = function () {
+    var body = '<div class="banner safe">' + I.lock + '<span><b>ไฟล์ไม่ออกจากเครื่องคุณ เราไม่ส่งไปที่ไหน</b><br>แอปอ่านไฟล์ในเครื่องนี้ แล้วเก็บไว้แค่สรุปเวลานอนแต่ละคืน</span></div>';
+    if (IMP) {
+      var a = IMP.nights[0], b = IMP.nights[IMP.nights.length - 1];
+      body += '<div class="card got"><div class="card-head">' + I.check + '<b>นำเข้าแล้ว ' + IMP.nights.length + ' คืน</b></div>' +
+        '<p class="sub">ตั้งแต่ ' + thDateShort(a.date) + ' ถึง ' + thDateShort(b.date) + '</p>' + IMPL +
+        '<p class="sub">หน้าเช้านี้ สวน สถิติ และสรุป 7 คืน ใช้ข้อมูลชุดนี้แล้ว</p>' +
+        '<button class="btn ghost danger" id="delImport">' + I.trash + '<span>ลบข้อมูลที่นำเข้า</span></button></div>';
+    } else {
+      body += '<div class="card"><div class="card-head">' + I.info + '<b>วิธีส่งออกไฟล์จาก iPhone</b></div><ol class="steps-list">' +
+        '<li>เปิดแอป “สุขภาพ” (Health)</li><li>แตะรูปโปรไฟล์ที่มุมขวาบน</li><li>เลื่อนลงล่างสุด แตะ “ส่งออกข้อมูลสุขภาพทั้งหมด”</li><li>บันทึกไฟล์ export.zip ไว้ในแอป “ไฟล์” แล้วกดปุ่มด้านล่าง</li></ol>' +
+        '<p class="sub">ใช้เฉพาะเวลาที่หลับ (ไม่นับเวลาที่แค่นอนอยู่บนเตียง) ถ้ามีทั้งนาฬิกาและ iPhone จะรวมช่วงที่ซ้อนกันให้ ไม่นับซ้ำ</p></div>';
+    }
+    if (IMPST.busy) body += '<div class="card" role="status"><div class="card-head">' + I.clock + '<b>กำลังอ่านไฟล์…</b></div>' +
+      '<div class="progress big"><i id="impBar" style="width:' + Math.round(IMPST.p * 100) + '%"></i></div><p class="sub" id="impPct">อ่านแล้ว ' + Math.round(IMPST.p * 100) + '%</p>' +
+      '<p class="sub">ไฟล์ใหญ่อาจใช้เวลาสักครู่ ไม่ต้องปิดหน้านี้</p></div>';
+    if (IMPST.err) body += '<p class="warn-line" role="alert">' + I.info + '<span>' + IMPST.err + '</span></p>';
+    return '<section class="screen sub import">' + topbar("settings", "นำเข้าจาก Apple Health") + '<div class="body scroll">' + body + '</div>' +
+      '<div class="foot"><label class="btn ' + (IMP ? "ghost" : "primary big") + ' file-btn' + (IMPST.busy ? " busy" : "") + '">' + I.upload + '<span>' + (IMPST.busy ? "กำลังอ่านไฟล์…" : IMP ? "เลือกไฟล์ใหม่" : "เลือกไฟล์ export.zip") + '</span>' +
+      '<input type="file" id="hfile" accept=".zip,.xml,application/zip,text/xml"' + (IMPST.busy ? " disabled" : "") + ' aria-label="เลือกไฟล์ export.zip หรือ export.xml"></label></div></section>';
+  };
+  function setImpProgress(p) {
+    IMPST.p = p;
+    var b = document.getElementById("impBar"), t = document.getElementById("impPct");
+    if (b) b.style.width = Math.round(p * 100) + "%"; if (t) t.textContent = "อ่านแล้ว " + Math.round(p * 100) + "%";
+  }
+  function loadScript(src) {
+    return new Promise(function (ok, bad) { var e = document.createElement("script"); e.src = src; e.onload = ok; e.onerror = bad; document.head.appendChild(e); });
+  }
+  function startImport(file) {
+    if (!file || IMPST.busy) return;
+    IMPST = { busy: true, p: 0, err: "" }; render();
+    function fail(code) { IMPST = { busy: false, p: 0, err: IMP_ERR[code] || IMP_ERR.other }; if (current === "import") render(); }
+    function done(r) {
+      if (!r.nights || !r.nights.length) { fail("nosleep"); return; }
+      var nights = r.nights.map(function (n) { return { date: n.date, bed: n.bed, wake: n.wake, mins: n.mins, inBed: n.inBed || 0 }; });
+      var rec = { v: 1, at: new Date().toISOString(), records: r.records, nights: nights };
+      try { localStorage.setItem(IMP_KEY, JSON.stringify(rec)); }
+      catch (e) { rec.nights = nights.slice(-60); try { localStorage.setItem(IMP_KEY, JSON.stringify(rec)); } catch (e2) { fail("other"); return; } }
+      rec.nights.forEach(decorate); IMP = rec;
+      state.extra = []; lastDemo = ""; save(); catCount();   /* one story per imported night is already collected (no popups) */
+      IMPST = { busy: false, p: 1, err: "" };
+      if (current === "import") render();
+      toast("นำเข้าแล้ว " + rec.nights.length + " คืน");
+    }
+    function onMain() {
+      var go = function () { window.NLHealth.readFile(file, setImpProgress, window.fflate).then(done, function (e) { fail(e && e.message); }); };
+      if (window.fflate) go(); else loadScript("vendor/fflate.min.js").then(go, function () { fail("other"); });
+    }
+    if (window.Worker && location.protocol !== "file:" && !NL.noWorker) {
+      try {
+        var w = new Worker("js/health-worker.js");
+        w.onmessage = function (e) {
+          var m = e.data;
+          if (m.type === "progress") setImpProgress(m.p);
+          else if (m.type === "done") { w.terminate(); done(m); }
+          else if (m.type === "error") { w.terminate(); fail(m.msg); }
+        };
+        w.onerror = function (e) { if (e.preventDefault) e.preventDefault(); w.terminate(); onMain(); };
+        w.postMessage({ file: file });
+        return;
+      } catch (e) {}
+    }
+    onMain();
+  }
+  function confirmDelImport() {
+    modal({ title: "ลบข้อมูลที่นำเข้าไหม?", body: "แอปจะกลับไปใช้ข้อมูลตัวอย่าง (เดโม) ไฟล์ที่อยู่ในเครื่องคุณจะไม่ถูกลบ", actions: [
+      { label: "ไม่ลบ", icon: I.close, kind: "primary" },
+      { label: "ลบเลย", icon: I.trash, kind: "ghost danger", fn: function () {
+        try { localStorage.removeItem(IMP_KEY); } catch (e) {}
+        IMP = null; IMPST = { busy: false, p: 0, err: "" }; render(); toast("ลบข้อมูลที่นำเข้าแล้ว กลับไปใช้ข้อมูลตัวอย่าง");
+      } }
+    ] });
+  }
+
+  /* ---------- v3: พักหน้าจอ (idle auto-lock) ----------
+     After N minutes with no pointer/touch/key/wheel event, a near-black overlay with a dim moon and a large
+     Bangkok clock covers the app. A ~0.8 s hold (pointer, or Enter/Space held) brings the app back; a quick
+     tap does nothing, so a pocket bump is less likely to wake it. Sleep timers keep running. The app never
+     requests a Screen Wake Lock; if one is ever held, it is released on lock. A web page cannot lock the phone. */
+  var HOLD_MS = 800;
+  var Idle = { ms: idleMin() * 60000, t: null, locked: false, clockT: null, holdT: null, prevFocus: null };
+  var wakeLock = null;
+  function releaseWakeLock() { if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; } }
+  function idleArm() { clearTimeout(Idle.t); Idle.t = null; if (!Idle.ms || Idle.locked) return; Idle.t = setTimeout(idleFire, Idle.ms); }
+  function idleFire() { if (Q.running || B.running) { idleArm(); return; } lockNow(); }   /* never during a running quiet/breath timer */
+  function activity() { if (!Idle.locked) idleArm(); }
+  ["pointerdown", "keydown", "wheel", "touchstart"].forEach(function (ev) { document.addEventListener(ev, activity, { passive: true, capture: true }); });
+  var idleEl = document.getElementById("idle");
+  var clockFmt = null, dateFmt = null;
+  try {
+    clockFmt = new Intl.DateTimeFormat("th-TH", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+    dateFmt = new Intl.DateTimeFormat("th-TH", { timeZone: "Asia/Bangkok", weekday: "long", day: "numeric", month: "short" });
+  } catch (e) {}
+  function idleClock() {
+    var c = document.getElementById("idleClock"), d = document.getElementById("idleDate"), now = new Date();
+    if (c) c.textContent = clockFmt ? clockFmt.format(now) : hhmm(Math.floor((now.getTime() / 60000 + 420) % 1440));
+    if (d) d.textContent = dateFmt ? dateFmt.format(now) : "";
+  }
+  function lockNow() {
+    if (Idle.locked || !idleEl) return;
+    Idle.locked = true; clearTimeout(Idle.t); releaseWakeLock();
+    Idle.prevFocus = document.activeElement;
+    var playing = Snd.anyPlaying();
+    idleEl.innerHTML = '<div class="idle-in"><svg class="idle-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4a8 8 0 1 0 5 13A7 7 0 0 1 15 4z" fill="#6E6A55"/></svg>' +
+      '<p class="idle-clock" id="idleClock"></p><p class="idle-date" id="idleDate"></p>' +
+      (playing ? '<p class="idle-note">เพลงและเสียงยังเล่นอยู่</p>' : "") + '</div>' +
+      '<button class="idle-hold" id="idleHold" aria-label="แตะค้างไว้เพื่อกลับ"><span class="hold-ring"><i></i></span><span class="hold-tx" id="idleTx">แตะค้างเพื่อกลับ</span></button>';
+    idleEl.className = "idle show"; idleEl.setAttribute("aria-hidden", "false");
+    document.getElementById("app").setAttribute("aria-hidden", "true");
+    idleClock(); Idle.clockT = setInterval(idleClock, 15000);
+    var h = document.getElementById("idleHold"); if (h) h.focus({ preventScroll: true });
+  }
+  function unlock() {
+    if (!Idle.locked) return;
+    Idle.locked = false; clearInterval(Idle.clockT); holdCancel();
+    idleEl.className = "idle"; idleEl.setAttribute("aria-hidden", "true"); idleEl.innerHTML = "";
+    document.getElementById("app").removeAttribute("aria-hidden");
+    if (Idle.prevFocus && document.body.contains(Idle.prevFocus)) Idle.prevFocus.focus({ preventScroll: true });
+    idleArm();
+  }
+  function holdStart() {
+    if (!Idle.locked || Idle.holdT) return;
+    idleEl.classList.add("holding"); var t = document.getElementById("idleTx"); if (t) t.textContent = "ค้างไว้อีกนิด…";
+    Idle.holdT = setTimeout(function () { Idle.holdT = null; unlock(); }, HOLD_MS);
+  }
+  function holdCancel() {
+    clearTimeout(Idle.holdT); Idle.holdT = null;
+    if (idleEl) { idleEl.classList.remove("holding"); var t = document.getElementById("idleTx"); if (t) t.textContent = "แตะค้างเพื่อกลับ"; }
+  }
+  if (idleEl) {
+    idleEl.addEventListener("pointerdown", function (e) { e.preventDefault(); holdStart(); });
+    ["pointerup", "pointercancel", "pointerleave"].forEach(function (ev) { idleEl.addEventListener(ev, holdCancel); });
+    idleEl.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+    idleEl.addEventListener("keydown", function (e) { if ((e.key === "Enter" || e.key === " ") && !e.repeat) { e.preventDefault(); holdStart(); } });
+    idleEl.addEventListener("keyup", function (e) { if (e.key === "Enter" || e.key === " ") holdCancel(); });
+    idleEl.addEventListener("click", function (e) { e.preventDefault(); });
+  }
+  idleArm();
 
   /* ---------- celebration (once) ---------- */
   function maybeCelebrate() {
@@ -879,7 +1253,8 @@
   var current = "";
   var TITLES = { splash: "หน้าแรก", connect: "เชื่อมข้อมูลการนอน", morning: "อรุณสวัสดิ์", garden: "สวนดาว", decor: "ของแต่งสวน", places: "เลือกฉาก", pet: "แมวน้อย",
     collect: "สมุดสะสม", bedtime: "ก่อนนอน", quiet: "นั่งนิ่ง ๆ", breathe: "หายใจช้า ๆ", sounds: "เสียงก่อนนอน", read: "อ่านก่อนนอน", reader: "กำลังอ่าน",
-    gratitude: "ขอบคุณวันนี้", winddown: "เวลาเตรียมนอน", stats: "สถิติ", settings: "ตั้งค่า" };
+    gratitude: "ขอบคุณวันนี้", winddown: "เวลาเตรียมนอน", stats: "สถิติ", settings: "ตั้งค่า",
+    music: "เพลงกล่อม", cat: "นิทานของนุ่มนิ่ม", night: "ถ้าตื่นกลางดึก", week: "สรุปการนอน 7 คืน", "import": "นำเข้าจาก Apple Health" };
   function parse() { var h = (location.hash || "#splash").slice(1).split("/"); return { name: screens[h[0]] ? h[0] : "splash", arg: h[1] }; }
   function render() {
     var r = parse(), y = 0, sc = app.querySelector(".body.scroll");
@@ -887,17 +1262,19 @@
     app.innerHTML = screens[r.name](r.arg);
     /* animation pass: soft settle only when the screen changes (re-renders of the same screen stay still) */
     if (r.name !== current && app.firstElementChild) app.firstElementChild.classList.add("enter");
-    if (window.Ambient) Ambient.scan({ place: state.place });
+    if (window.Ambient) Ambient.scan({ place: layoutKey() });
     var sc2 = app.querySelector(".body.scroll"); if (sc2 && r.name === current) sc2.scrollTop = y;
-    if (r.name === "sounds") updateTimerLabel();
+    if (r.name === "sounds" || r.name === "music" || r.name === "night") updateTimerLabel();
+    if (r.name === "music") checkTracks();
   }
   function route() {
     var r = parse();
+    if (r.name === "week" && r.name !== current) weekBack = current === "stats" ? "stats" : "settings";
     if (r.name !== current) { if (Date.now() - toastAt > 400) { toastEl.className = "toast"; } stopTimer(); stopQuiet(); stopBreathe(); Q.started = false; Q.ended = false; B.done = false; if (r.name !== "garden") G.mode = G.sel = null; }
     if (modalEl.classList.contains("show")) closeModal();
     render();
     var changed = r.name !== current; current = r.name;
-    document.title = "Moonpuff · " + TITLES[r.name] + " (เดโม)";
+    document.title = "Moonpuff · " + TITLES[r.name] + (IMP ? "" : " (เดโม)");
     if (changed) { var h = app.querySelector("h1"); if (h) { h.setAttribute("tabindex", "-1"); } }
     if (r.name === "reader") startReader();
     maybeCelebrate();
@@ -905,7 +1282,7 @@
   window.addEventListener("hashchange", route);
 
   app.addEventListener("click", function (e) {
-    var t = e.target.closest("[data-go],[data-src],[data-star],[data-wander],[data-decor],[data-placed],[data-spot],[data-place],[data-card],[data-qmin],[data-pat],[data-bmin],[data-snd],[data-vol],[data-stimer],[data-del],[data-fs],[data-addnight],button[id]");
+    var t = e.target.closest("[data-go],[data-src],[data-star],[data-wander],[data-decor],[data-placed],[data-spot],[data-place],[data-card],[data-qmin],[data-pat],[data-bmin],[data-snd],[data-vol],[data-stimer],[data-del],[data-fs],[data-addnight],[data-mus],[data-mvol],[data-season],[data-idle],[data-dim],button[id]");
     if (!t || t.disabled) return;
     var d = t.dataset;
     if (d.go) { location.hash = "#" + d.go; return; }
@@ -935,13 +1312,18 @@
     if (d.bmin) { B.min = +d.bmin; B.done = false; render(); return; }
     if (d.snd) {
       var c = Snd.cfg(d.snd);
-      if (Snd.nodes[d.snd]) { Snd.stop(d.snd); c.on = false; } else { Snd.start(d.snd); c.on = true; }
+      if (Snd.nodes[d.snd]) { Snd.stop(d.snd); c.on = false; Snd.idleCheck(); } else { Snd.start(d.snd); c.on = true; }
       save(); render(); return;
     }
     if (d.vol) {
       var cv = Snd.cfg(d.vol); cv.vol = Math.max(0, Math.min(4, cv.vol + (+d.d))); Snd.setVol(d.vol); save(); render(); return;
     }
     if (d.stimer != null) { Snd.setTimer(+d.stimer); save(); render(); return; }
+    if (d.mus) { if (Snd.musicPlaying() === d.mus) Snd.stopMusic(); else Snd.playMusic(d.mus); save(); render(); return; }
+    if (d.mvol) { MUS.vol = Math.max(0, Math.min(4, MUS.vol + (+d.d))); musSave(); var mp = Snd.musicPlaying(); if (mp) Snd.setVol(mp); render(); return; }
+    if (d.season) { try { localStorage.setItem(SEASON_KEY, d.season); } catch (e) {} render(); toast("ตอนนี้เป็นฉาก" + seasonName(seasonNow())); return; }
+    if (d.idle != null) { var im = +d.idle; try { localStorage.setItem(IDLE_KEY, im ? String(im) : "off"); } catch (e) {} Idle.ms = im * 60000; idleArm(); render(); toast(im ? "พักหน้าจอเมื่อไม่ได้แตะ " + im + " นาที" : "ปิดการพักหน้าจอแล้ว"); return; }
+    if (d.dim != null) { var wd = warmGet(); wd.dim = +d.dim; warmSet(wd); render(); return; }
     if (d.del) { delNote(+d.del); return; }
     if (d.fs) { applyFs(d.fs); render(); toast("เปลี่ยนขนาดตัวอักษรแล้ว"); return; }
     if (d.addnight) { addNight(d.addnight); maybeCelebrate(); return; }
@@ -952,7 +1334,16 @@
       case "qgo": quietGo(); return;
       case "qstop": stopQuiet(); Q.started = false; render(); return;
       case "bgo": breatheGo(); return;
-      case "stopAll": Snd.stopAll(); render(); toast("หยุดเสียงแล้ว"); return;
+      case "stopAll": Snd.stopAll(); render(); toast("หยุดเพลงและเสียงแล้ว"); return;
+      case "stopNature": Snd.stopNature(); render(); toast("หยุดเสียงแล้ว"); return;
+      case "stopMusic": Snd.stopMusic(); render(); toast("หยุดเพลงแล้ว"); return;
+      case "nightPlay":
+        var nid = t.dataset.id; if (isMus(nid)) Snd.playMusic(nid); else { Snd.start(nid); Snd.cfg(nid).on = true; }
+        if (!Snd.end) Snd.setTimer(30);
+        save(); render(); return;
+      case "nightStop": Snd.stopAll(); render(); toast("หยุดเสียงแล้ว"); return;
+      case "warmToggle": var w0 = warmGet(); w0.on = !w0.on; warmSet(w0); render(); toast(w0.on ? "เปิดโหมดแสงอุ่นแล้ว" : "ปิดโหมดแสงอุ่นแล้ว"); return;
+      case "delImport": confirmDelImport(); return;
       case "gsave": saveNote(); return;
       case "wminus": state.wind.time = (state.wind.time - 15 + 1440) % 1440; save(); render(); return;
       case "wplus": state.wind.time = (state.wind.time + 15) % 1440; save(); render(); return;
@@ -970,6 +1361,7 @@
         return;
     }
   });
+  app.addEventListener("change", function (e) { if (e.target.id === "hfile") { var f = e.target.files && e.target.files[0]; e.target.value = ""; startImport(f); } });
   app.addEventListener("keydown", function (e) {
     if ((e.key === "Enter" || e.key === " ") && e.target.matches("svg [role=button]")) { e.preventDefault(); e.target.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
   });
@@ -978,7 +1370,14 @@
     state: function () { return state; }, streak: S,
     reset: function () { state = fresh(); save(); G.mode = G.sel = null; },
     setMode: function (mode, id) { G.mode = mode; G.sel = id; rerenderGarden(); },
-    sound: Snd
+    sound: Snd,
+    /* v3 test hooks */
+    lockNow: lockNow, unlock: unlock, locked: function () { return Idle.locked; },
+    setIdleMs: function (ms) { Idle.ms = ms; idleArm(); },
+    setNow: function (iso) { NOW_OVERRIDE = iso || null; if (current) render(); },
+    season: function () { return seasonNow(); }, layout: function () { return layoutKey(); },
+    imported: function () { return IMP; }, catCount: function () { return catCount(); },
+    week: weekNumbers, startImport: startImport, noWorker: false
   };
   route();
 })();

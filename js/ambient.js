@@ -89,6 +89,12 @@
       flies: [0, 360, 390, 545], fliesN: 12, embers: 8, twinkle: 15 },
     camp: { fire: [0.782, 0.627, 0.17], lamps: [[0.147, 0.596, 0.13, 0.32]], flies: [0, 400, 390, 545], fliesN: 10, embers: 10, twinkle: 14,
       avoid: [[0.75, 0.27, 0.09]] /* the painted moon */ },
+    /* v3 seasonal dresses of the sea garden (fractions measured on the paintings) */
+    "sea-winter": { fire: [0.59, 0.669, 0.05], flies: [0, 380, 390, 520], fliesN: 6, embers: 5, shimmer: [[0, 540, 390, 560]], twinkle: 14,
+      avoid: [[0.82, 0.09, 0.09]] /* the painted moon */ },
+    "sea-loykrathong": { lamps: [[0.103, 0.485, 0.08, 0.32], [0.29, 0.515, 0.07, 0.32]], flies: [0, 380, 390, 540], fliesN: 10, shimmer: [[150, 470, 390, 560]], twinkle: 12,
+      avoid: [[0.79, 0.09, 0.12]] },
+    "sea-songkran": { lamps: [[0.474, 0.503, 0.09, 0.32]], flies: [0, 380, 390, 540], fliesN: 10, shimmer: [[0, 530, 390, 560]], twinkle: 14 },
     bedroom: { lamps: [[0.122, 0.452, 0.2, 0.36]], flies: [150, 360, 390, 470], fliesN: 5, motes: [10, 250, 175, 430], motesN: 8,
       twinkle: 14, sky: [0.3, 0.06, 0.86, 0.43] }
   };
@@ -105,7 +111,7 @@
       },
       cfg: function (W, H, M) {
         var c = { fires: [], lamps: [] };
-        if (FX.fire) { var f = img(FX.fire[0], FX.fire[1]); c.fires.push({ x: f[0], y: f[1], h: FX.fire[2] * iw, embers: FX.embers, flames: place === "camp", glow: place === "sea" ? 0.7 : 1 }); }
+        if (FX.fire) { var f = img(FX.fire[0], FX.fire[1]); c.fires.push({ x: f[0], y: f[1], h: FX.fire[2] * iw, embers: FX.embers, flames: place === "camp", glow: place.indexOf("sea") === 0 ? 0.7 : 1 }); }
         (FX.lamps || []).forEach(function (l) { var p = img(l[0], l[1]); c.lamps.push({ x: p[0], y: p[1], r: l[2] * iw, a: l[3], period: rnd(3.2, 4.4) }); });
         c.fireflies = { n: FX.fliesN, zone: FX.flies };
         if (FX.motes) c.motes = { n: FX.motesN, zone: FX.motes };

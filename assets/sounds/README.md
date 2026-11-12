@@ -22,3 +22,19 @@ Format: mono, 22.05 kHz, 24 s loops. `.ogg` (Vorbis q3) is used where the browse
 - The sample jump at the seam is below the 99.9th percentile of normal sample-to-sample steps.
 
 Nobody has listened to these yet (the build machine has no speakers). A human should listen once on a phone speaker and on headphones.
+
+## เพลงกล่อม (lullabies, added in v3, 12 Nov 2026)
+
+**License:** original melodies composed and synthesised for this demo by `tools/make_lullabies.py` (numpy + scipy, then ffmpeg). No recordings, no samples, no existing tunes. CC0 / public domain dedication by the project, the same as the nature sounds.
+
+| File | Thai name in the app | What it is | Loop |
+|---|---|---|---|
+| `lullaby-box` | กล่องเพลงพระจันทร์ | music-box timbre (sine partials, fast decay), 60 BPM, 3/4, 16 bars | 48 s |
+| `lullaby-piano` | เปียโนก่อนนอน | soft piano-like partials, slow broken chords + a small melody, 56 BPM, 4/4, 12 bars | 51.428571 s |
+| `lullaby-bells` | ดาวกระซิบ | soft bell partials, sparse notes | 48 s |
+
+Format: mono, 22.05 kHz, peak −6 dBFS (quieter than the nature sounds). `.ogg` (Vorbis) and `.m4a` (AAC, for Safari).
+
+**Loop length:** the app trims each decoded file to exactly one loop of **its own length** (`NL_LULLABIES[].loop` in `js/content.js`, used by `Snd.exactLoop()`); before v3 every file was cut to 24 s, which would have chopped the lullabies in half.
+
+**Checks:** `python3 tools/check_sound_seams.py` decodes all 18 files, applies the same trim and compares the jump at the wrap point with the 99.9th-percentile sample step inside the loop: **ALL OK** (12 Nov 2026). The lullabies begin on a note, so the first 10 ms are louder than the last 10 ms (a soft note attack, not a click). Nobody has listened on a phone yet; a human should.
